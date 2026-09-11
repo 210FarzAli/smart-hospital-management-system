@@ -4,427 +4,322 @@ import {
   type ReportOverview,
   type ReportPeriod,
 } from "../../lib/apiClient";
+import {
+  TrendingUp,
+  Calendar,
+  Users,
+  Stethoscope,
+  Pill,
+  DollarSign,
+  ShieldCheck,
+  Refresh,
+  Filter,
+} from "../../components/icons/Icons";
 
 function getToday() {
-  return new Date()
-    .toISOString()
-    .split("T")[0];
+  return new Date().toISOString().split("T")[0];
 }
 
 function getCurrentMonth() {
-  return new Date()
-    .toISOString()
-    .slice(0, 7);
+  return new Date().toISOString().slice(0, 7);
 }
 
 export default function AdminReports() {
-  const [stats, setStats] =
-    useState<ReportOverview | null>(null);
+  const [stats, setStats] = useState<ReportOverview | null>(null);
+  const [period, setPeriod] = useState<ReportPeriod>("all");
+  const [selectedDate, setSelectedDate] = useState(getToday());
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [period, setPeriod] =
-    useState<ReportPeriod>("all");
-
-  const [selectedDate, setSelectedDate] =
-    useState(getToday());
-
-  const [selectedMonth, setSelectedMonth] =
-    useState(getCurrentMonth());
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  // ============================================================
-  // LOAD REPORT
-  // ============================================================
-  async function loadReport(
-    selectedPeriod: ReportPeriod = period
-  ) {
+  async function loadReport(selectedPeriod: ReportPeriod = period) {
     try {
       setLoading(true);
       setError(null);
 
       let date: string | undefined;
-
-      if (
-        selectedPeriod === "day" ||
-        selectedPeriod === "week"
-      ) {
+      if (selectedPeriod === "day" || selectedPeriod === "week") {
         date = selectedDate;
       }
-
       if (selectedPeriod === "month") {
         date = `${selectedMonth}-01`;
       }
 
-      const data =
-        await reportsApi.overview({
-          period: selectedPeriod,
-          date,
-        });
-
+      const data = await reportsApi.overview({
+        period: selectedPeriod,
+        date,
+      });
       setStats(data);
     } catch (err) {
       console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load report."
-      );
+      setError(err instanceof Error ? err.message : "Failed to load report.");
     } finally {
       setLoading(false);
     }
   }
 
-  // ============================================================
-  // INITIAL REPORT
-  // ============================================================
   useEffect(() => {
     loadReport("all");
   }, []);
 
-  // ============================================================
-  // APPLY FILTER
-  // ============================================================
   function handleApplyFilter() {
     loadReport(period);
   }
 
-  // ============================================================
-  // RESET FILTER
-  // ============================================================
   function handleReset() {
     setPeriod("all");
     setSelectedDate(getToday());
     setSelectedMonth(getCurrentMonth());
-
     loadReport("all");
   }
 
-  // ============================================================
-  // MONEY FORMAT
-  // ============================================================
   function money(value: number | undefined) {
-    if (value === undefined) {
-      return "—";
-    }
-
-    return `Rs. ${value.toFixed(0)}`;
+    if (value === undefined) return "—";
+    return `Rs. ${value.toLocaleString()}`;
   }
 
-  // ============================================================
-  // REPORT LABEL
-  // ============================================================
   function getReportDescription() {
-    if (!stats) {
-      return "";
-    }
-
+    if (!stats) return "";
     if (stats.reportPeriod === "all") {
-      return "Showing all pharmacy sales and revenue.";
+      return "Cumulative hospital performance across all recorded dates.";
     }
-
     if (stats.reportPeriod === "day") {
-      return `Showing pharmacy sales for ${selectedDate}.`;
+      return `Daily financial & OPD summary for ${selectedDate}.`;
     }
-
     if (stats.reportPeriod === "week") {
-      return `Showing the complete week containing ${selectedDate}.`;
+      return `Weekly aggregated performance for the week of ${selectedDate}.`;
     }
-
     if (stats.reportPeriod === "month") {
-      return `Showing pharmacy sales for ${selectedMonth}.`;
+      return `Monthly operational summary for ${selectedMonth}.`;
     }
-
     return "";
   }
 
   return (
-    <div>
-      {/* ========================================================
-          HEADER
-      ======================================================== */}
-      <div>
-        <h1 className="text-2xl font-semibold text-teal-950">
-          Reports & Analytics
-        </h1>
-
-        <p className="mt-1 text-sm text-slate-500">
-          Monitor hospital activity and pharmacy
-          financial performance.
-        </p>
-      </div>
-
-      {/* ========================================================
-          REPORT FILTER
-      ======================================================== */}
-      <div className="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-base font-semibold text-teal-950">
-            Report Filter
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Select the period you want to analyze.
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Executive Financial & OPD Intelligence
+          </div>
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+            Reports & Analytics
+          </h1>
+          <p className="text-xs text-slate-500">
+            Audit hospital activity, pharmacy sales revenue, and patient inflow across custom timeframes.
           </p>
         </div>
+      </div>
 
-        <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end">
-          {/* Period */}
-          <div className="w-full lg:w-52">
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Report Period
+      {/* Filter Toolbar */}
+      <div className="card p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+          {/* Period Selector */}
+          <div className="w-full lg:w-48">
+            <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+              Reporting Period
             </label>
-
             <select
-              className="input-field w-full"
               value={period}
-              onChange={(e) =>
-                setPeriod(
-                  e.target.value as ReportPeriod
-                )
-              }
+              onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
+              className="input-field mt-1.5 text-xs"
             >
-              <option value="all">
-                All Time
-              </option>
-
-              <option value="day">
-                Day
-              </option>
-
-              <option value="week">
-                Week
-              </option>
-
-              <option value="month">
-                Month
-              </option>
+              <option value="all">All Time History</option>
+              <option value="day">Single Day</option>
+              <option value="week">Weekly View</option>
+              <option value="month">Monthly Statement</option>
             </select>
           </div>
 
-          {/* Day / Week date */}
-          {(period === "day" ||
-            period === "week") && (
-            <div className="w-full lg:w-56">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                {period === "day"
-                  ? "Select Date"
-                  : "Select Date in Week"}
+          {/* Date Picker (for Day and Week) */}
+          {(period === "day" || period === "week") && (
+            <div className="w-full lg:w-48">
+              <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                {period === "day" ? "Select Day" : "Week Reference Date"}
               </label>
-
               <input
                 type="date"
-                className="input-field w-full"
                 value={selectedDate}
-                onChange={(e) =>
-                  setSelectedDate(
-                    e.target.value
-                  )
-                }
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="input-field mt-1.5 text-xs"
               />
             </div>
           )}
 
-          {/* Month */}
+          {/* Month Picker */}
           {period === "month" && (
-            <div className="w-full lg:w-56">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <div className="w-full lg:w-48">
+              <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
                 Select Month
               </label>
-
               <input
                 type="month"
-                className="input-field w-full"
                 value={selectedMonth}
-                onChange={(e) =>
-                  setSelectedMonth(
-                    e.target.value
-                  )
-                }
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="input-field mt-1.5 text-xs"
               />
             </div>
           )}
 
-          {/* Apply */}
-          <button
-            type="button"
-            onClick={handleApplyFilter}
-            disabled={loading}
-            className="btn-primary"
-          >
-            {loading
-              ? "Loading..."
-              : "Apply Filter"}
-          </button>
+          {/* Filter Actions */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleApplyFilter}
+              disabled={loading}
+              className="btn-primary inline-flex items-center gap-1.5 text-xs"
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Apply Analysis
+            </button>
 
-          {/* Reset */}
-          <button
-            type="button"
-            onClick={handleReset}
-            disabled={loading}
-            className="rounded-md border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            Reset
-          </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={loading}
+              className="btn-outline inline-flex items-center gap-1.5 text-xs"
+            >
+              <Refresh className="h-3.5 w-3.5" />
+              Reset All
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* ========================================================
-          ERROR
-      ======================================================== */}
-      {error && (
-        <div className="mt-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {/* ========================================================
-          PHARMACY REPORT
-      ======================================================== */}
-      <div className="mt-8">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-teal-950">
-            Pharmacy Financial Report
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
+        {/* Current Period Badge */}
+        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <span className="font-medium text-teal-900">
             {getReportDescription()}
-          </p>
+          </span>
+          {stats?.reportPeriod && (
+            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 font-semibold text-teal-800 uppercase tracking-wider text-[10px]">
+              Active Scope: {stats.reportPeriod}
+            </span>
+          )}
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {/* Sales */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Pharmacy Sales
-            </div>
-
-            <div className="mt-2 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : stats?.pharmacySales ?? 0}
-            </div>
-
-            <div className="mt-2 text-sm text-slate-500">
-              Completed sales in selected period
-            </div>
-          </div>
-
-          {/* Revenue */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
+      {/* KPI Grid */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Total Pharmacy Revenue */}
+        <div className="card p-6 bg-gradient-to-br from-teal-900 to-teal-950 text-white shadow-lg shadow-teal-950/20">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold tracking-wider text-teal-200 uppercase">
               Pharmacy Revenue
-            </div>
-
-            <div className="mt-2 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : money(
-                    stats?.pharmacyRevenue
-                  )}
-            </div>
-
-            <div className="mt-2 text-sm text-slate-500">
-              Total revenue in selected period
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-800 text-teal-200">
+              <DollarSign className="h-5 w-5" />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ========================================================
-          SELECTED PERIOD SUMMARY
-      ======================================================== */}
-      <div className="mt-6 rounded-lg border border-teal-100 bg-teal-50 p-5">
-        <div className="text-sm font-medium text-teal-800">
-          Current Report
-        </div>
-
-        <div className="mt-1 text-lg font-semibold text-teal-950">
-          {stats?.reportPeriodLabel ||
-            "All Time"}
-        </div>
-
-        <div className="mt-1 text-sm text-teal-700">
-          {stats?.pharmacySales ?? 0} sales
-          {" • "}
-          {money(
-            stats?.pharmacyRevenue
-          )}{" "}
-          revenue
-        </div>
-      </div>
-
-      {/* ========================================================
-          HOSPITAL OVERVIEW
-      ======================================================== */}
-      <div className="mt-8">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-teal-950">
-            Hospital Overview
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Current hospital activity and review statistics.
+          <div className="mt-4 text-3xl font-extrabold tracking-tight">
+            {loading ? "—" : money(stats?.pharmacyRevenue)}
+          </div>
+          <p className="mt-1 text-xs text-teal-300">
+            Total OTC & prescription sales revenue
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Doctors */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Doctors
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : stats?.doctors ?? 0}
+        {/* Total Sales Count */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+              Invoiced Orders
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800">
+              <Pill className="h-5 w-5" />
             </div>
           </div>
+          <div className="mt-4 text-3xl font-extrabold text-teal-950">
+            {loading ? "—" : stats?.pharmacySales ?? 0}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Completed counter checkout tickets
+          </p>
+        </div>
 
-          {/* Patients */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Patients
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : stats?.patients ?? 0}
+        {/* Total Patients */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+              Patient Inflow
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800">
+              <Users className="h-5 w-5" />
             </div>
           </div>
+          <div className="mt-4 text-3xl font-extrabold text-teal-950">
+            {loading ? "—" : stats?.patients ?? 0}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Unique patient medical records
+          </p>
+        </div>
 
-          {/* Reviews */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Total Reviews
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : stats?.totalReviews ?? 0}
+        {/* Total Appointments */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+              Consultation Volume
+            </span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-800">
+              <Calendar className="h-5 w-5" />
             </div>
           </div>
+          <div className="mt-4 text-3xl font-extrabold text-teal-950">
+            {loading ? "—" : stats?.appointmentsToday ?? 0}
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Scheduled OPD visits for period
+          </p>
+        </div>
+      </div>
 
-          {/* Rating */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Average Rating
+      {/* Clinical Department Summary Banner */}
+      <div className="card p-6">
+        <h2 className="text-sm font-bold text-teal-950">
+          Hospital Capacity & Operations Summary
+        </h2>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <Stethoscope className="h-4 w-4 text-teal-700" />
+              Physicians On Staff
             </div>
+            <div className="mt-1 text-2xl font-bold text-teal-950">
+              {stats?.doctors ?? 0} Specialists
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Across all hospital departments
+            </p>
+          </div>
 
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loading
-                ? "—"
-                : stats?.averageRating.toFixed(
-                    1
-                  )}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <Calendar className="h-4 w-4 text-teal-700" />
+              Pending Appointments
             </div>
+            <div className="mt-1 text-2xl font-bold text-amber-600">
+              {stats?.pendingAppointments ?? 0} Tokens
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Require administrative approval
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+              <TrendingUp className="h-4 w-4 text-teal-700" />
+              Average Ticket Value
+            </div>
+            <div className="mt-1 text-2xl font-bold text-teal-950">
+              {stats && stats.pharmacySales > 0
+                ? money(Math.round(stats.pharmacyRevenue / stats.pharmacySales))
+                : "Rs. 0"}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Per pharmacy transaction
+            </p>
           </div>
         </div>
       </div>

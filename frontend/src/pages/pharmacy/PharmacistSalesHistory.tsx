@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { pharmacyApi } from "../../lib/apiClient";
 import type { PharmacySale } from "../../lib/apiClient";
+import {
+  Search,
+  Refresh,
+  ShieldCheck,
+  CheckCircle,
+  AlertCircle,
+} from "../../components/icons/Icons";
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleString("en-PK", {
-    dateStyle: "medium",
-    timeStyle: "short",
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   });
 }
 
 function formatMoney(value: number) {
-  return `Rs. ${Number(value || 0).toLocaleString("en-PK", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return `Rs. ${Number(value || 0).toLocaleString("en-US")}`;
 }
 
 export default function PharmacistSalesHistory() {
@@ -47,18 +54,19 @@ export default function PharmacistSalesHistory() {
   }, []);
 
   const filteredSales = useMemo(() => {
-    const value = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
 
-    if (!value) return sales;
+    if (!q) return sales;
 
     return sales.filter((sale) => {
       return (
-        sale.sale_code?.toLowerCase().includes(value) ||
-        sale.receipt_code?.toLowerCase().includes(value) ||
-        sale.customer_name?.toLowerCase().includes(value) ||
-        sale.customer_phone?.toLowerCase().includes(value) ||
-        sale.customer_email?.toLowerCase().includes(value) ||
-        sale.sold_by?.toLowerCase().includes(value)
+        sale.sale_code?.toLowerCase().includes(q) ||
+        sale.receipt_code?.toLowerCase().includes(q) ||
+        sale.customer_name?.toLowerCase().includes(q) ||
+        sale.customer_phone?.toLowerCase().includes(q) ||
+        sale.customer_email?.toLowerCase().includes(q) ||
+        sale.referring_doctor?.toLowerCase().includes(q) ||
+        sale.sold_by?.toLowerCase().includes(q)
       );
     });
   }, [sales, search]);
@@ -73,14 +81,20 @@ export default function PharmacistSalesHistory() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">
-            Sales History
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Financial Audit & Ledger
+          </div>
+
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+            Pharmacy Sales Journal ({sales.length})
           </h1>
 
-          <p className="mt-1 text-sm text-slate-500">
-            View previous pharmacy sales, customers, receipts and revenue.
+          <p className="text-xs text-slate-500">
+            Audit point-of-sale invoices, customer receipt codes, referring
+            doctors, and automated dispatch statuses.
           </p>
         </div>
 
@@ -88,311 +102,227 @@ export default function PharmacistSalesHistory() {
           type="button"
           onClick={loadSales}
           disabled={loading}
-          className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="btn-outline inline-flex items-center gap-2 text-xs"
         >
-          {loading ? "Refreshing..." : "Refresh"}
+          <Refresh className="h-3.5 w-3.5" />
+          Refresh Sales
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Total Sales</p>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="card p-5">
+          <div className="text-xs font-bold uppercase text-slate-500">
+            Completed Invoices
+          </div>
 
-          <p className="mt-2 text-2xl font-bold text-slate-900">
+          <div className="mt-2 text-3xl font-extrabold text-teal-950">
             {filteredSales.length}
-          </p>
+          </div>
+
+          <div className="mt-1 text-xs text-slate-500">
+            Filtered transaction tickets
+          </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Revenue</p>
+        <div className="card p-5">
+          <div className="text-xs font-bold uppercase text-slate-500">
+            Net Revenue
+          </div>
 
-          <p className="mt-2 text-2xl font-bold text-teal-700">
+          <div className="mt-2 text-3xl font-extrabold text-teal-700">
             {formatMoney(totalRevenue)}
-          </p>
+          </div>
+
+          <div className="mt-1 text-xs text-slate-500">
+            Total for displayed sales
+          </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Showing</p>
+        <div className="card p-5">
+          <div className="text-xs font-bold uppercase text-slate-500">
+            Average Basket Value
+          </div>
 
-          <p className="mt-2 text-2xl font-bold text-slate-900">
-            {filteredSales.length}
-          </p>
+          <div className="mt-2 text-3xl font-extrabold text-teal-950">
+            {filteredSales.length > 0
+              ? formatMoney(
+                  Math.round(totalRevenue / filteredSales.length)
+                )
+              : "Rs. 0"}
+          </div>
 
-          <p className="mt-1 text-xs text-slate-400">
-            of {sales.length} recorded sales
-          </p>
+          <div className="mt-1 text-xs text-slate-500">
+            Per transaction average
+          </div>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <label className="mb-2 block text-sm font-medium text-slate-700">
-          Search Sales
-        </label>
+      {/* Search Toolbar */}
+      <div className="card flex items-center gap-3 p-4">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
 
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by sale code, receipt, customer, phone or pharmacist..."
-          className="w-full rounded-md border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-        />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by sale code, receipt, customer, referring doctor, or dispensing staff..."
+            className="input-field pl-9 text-xs"
+          />
+        </div>
       </div>
 
-      {/* Error */}
+      {/* Error alert */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl bg-rose-50 p-4 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
           {error}
         </div>
       )}
 
-      {/* Loading */}
-      {loading && (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
-          Loading sales history...
-        </div>
-      )}
+      {/* Sales Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 font-bold uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-5 py-3.5">Invoice Code</th>
+                <th className="px-5 py-3.5">Customer</th>
+                <th className="px-5 py-3.5">Referring Doctor</th>
+                <th className="px-5 py-3.5">Type</th>
+                <th className="px-5 py-3.5">Total Amount</th>
+                <th className="px-5 py-3.5">Dispensed By</th>
+                <th className="px-5 py-3.5">Receipt Token & Email</th>
+                <th className="px-5 py-3.5 text-right">Timestamp</th>
+              </tr>
+            </thead>
 
-      {/* Empty */}
-      {!loading && !error && filteredSales.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-800">
-            No sales found
-          </h2>
-
-          <p className="mt-2 text-sm text-slate-500">
-            {search
-              ? "No sales match your search."
-              : "No pharmacy sales have been recorded yet."}
-          </p>
-        </div>
-      )}
-
-      {/* Desktop table */}
-      {!loading && filteredSales.length > 0 && (
-        <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead className="bg-slate-100">
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Sale
-                  </th>
+                  <td
+                    colSpan={8}
+                    className="p-8 text-center text-slate-400"
+                  >
+                    <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-700 border-t-transparent" />
 
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Customer
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Type
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Amount
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Sold By
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Receipt
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Date
-                  </th>
+                    <p className="mt-2">
+                      Loading sales journal...
+                    </p>
+                  </td>
                 </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {filteredSales.map((sale) => (
+              ) : filteredSales.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="p-8 text-center text-slate-500"
+                  >
+                    No sales found matching your criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredSales.map((sale) => (
                   <tr
                     key={sale.id}
-                    className="hover:bg-slate-50"
+                    className="transition-colors hover:bg-slate-50/80"
                   >
-                    <td className="px-4 py-4">
-                      <div className="font-semibold text-slate-900">
+                    {/* Invoice */}
+                    <td className="px-5 py-4">
+                      <div className="font-mono text-xs font-bold text-teal-950">
                         {sale.sale_code}
                       </div>
 
-                      <div className="mt-1 text-xs text-slate-400">
-                        {sale.id}
+                      <div className="font-mono text-[10px] text-slate-400">
+                        ID: {sale.id.slice(0, 8)}
                       </div>
                     </td>
 
-                    <td className="px-4 py-4">
-                      <div className="font-medium text-slate-800">
+                    {/* Customer */}
+                    <td className="px-5 py-4">
+                      <div className="font-bold text-slate-900">
                         {sale.customer_name || "Walk-in Customer"}
                       </div>
 
-                      {sale.customer_phone && (
-                        <div className="mt-1 text-xs text-slate-500">
-                          {sale.customer_phone}
-                        </div>
-                      )}
+                      <div className="text-[10px] text-slate-400">
+                        {sale.customer_phone ||
+                          sale.customer_email ||
+                          "No contact info"}
+                      </div>
+                    </td>
 
-                      {sale.customer_email && (
-                        <div className="mt-1 text-xs text-slate-500">
-                          {sale.customer_email}
+                    {/* Referring Doctor */}
+                    <td className="px-5 py-4">
+                      {sale.referring_doctor ? (
+                        <>
+                          <div className="font-bold text-slate-900">
+                            {sale.referring_doctor}
+                          </div>
+
+                          <div className="mt-0.5 text-[10px] text-teal-700">
+                            Hospital Referral
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-slate-400">
+                          Walk-in / N/A
                         </div>
                       )}
                     </td>
 
-                    <td className="px-4 py-4">
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium capitalize text-slate-700">
-                        {sale.sale_type?.replace("_", " ") || "Unknown"}
+                    {/* Sale Type */}
+                    <td className="px-5 py-4">
+                      <span className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold capitalize text-slate-700">
+                        {sale.sale_type?.replace("_", " ") ||
+                          "Walk-in"}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4 font-semibold text-teal-700">
+                    {/* Amount */}
+                    <td className="px-5 py-4 font-extrabold text-teal-950">
                       {formatMoney(sale.total_amount)}
                     </td>
 
-                    <td className="px-4 py-4 text-sm text-slate-700">
-                      {sale.sold_by || "Unknown"}
+                    {/* Dispensed By */}
+                    <td className="px-5 py-4 text-slate-700">
+                      {sale.sold_by || "Staff Pharmacist"}
                     </td>
 
-                    <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-slate-800">
+                    {/* Receipt / Email */}
+                    <td className="px-5 py-4">
+                      <div className="font-mono text-xs font-semibold text-slate-800">
                         {sale.receipt_code || "—"}
                       </div>
 
-                      <div className="mt-1 text-xs">
-                        {sale.email_status === "sent" && (
-                          <span className="text-green-600">
-                            Email Sent
+                      <div className="mt-0.5">
+                        {sale.email_status === "sent" ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                            <CheckCircle className="h-3 w-3" />
+                            Receipt Emailed
                           </span>
-                        )}
-
-                        {sale.email_status === "failed" && (
-                          <span className="text-red-600">
+                        ) : sale.email_status === "failed" ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-700">
+                            <AlertCircle className="h-3 w-3" />
                             Email Failed
                           </span>
-                        )}
-
-                        {(!sale.email_status ||
-                          sale.email_status === "not_sent") && (
-                          <span className="text-slate-400">
-                            Not Sent
+                        ) : (
+                          <span className="text-[10px] text-slate-400">
+                            No Email Dispatched
                           </span>
                         )}
                       </div>
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-600">
+                    {/* Timestamp */}
+                    <td className="whitespace-nowrap px-5 py-4 text-right text-slate-500">
                       {formatDate(sale.created_at)}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
-
-      {/* Mobile cards */}
-      {!loading && filteredSales.length > 0 && (
-        <div className="space-y-4 lg:hidden">
-          {filteredSales.map((sale) => (
-            <div
-              key={sale.id}
-              className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Sale
-                  </p>
-
-                  <p className="mt-1 font-bold text-slate-900">
-                    {sale.sale_code}
-                  </p>
-                </div>
-
-                <p className="font-bold text-teal-700">
-                  {formatMoney(sale.total_amount)}
-                </p>
-              </div>
-
-              <div className="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Customer
-                  </span>
-
-                  <span className="text-right font-medium text-slate-800">
-                    {sale.customer_name || "Walk-in Customer"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Type
-                  </span>
-
-                  <span className="capitalize text-slate-800">
-                    {sale.sale_type?.replace("_", " ") || "Unknown"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Sold By
-                  </span>
-
-                  <span className="text-right text-slate-800">
-                    {sale.sold_by || "Unknown"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Receipt
-                  </span>
-
-                  <span className="text-right text-slate-800">
-                    {sale.receipt_code || "—"}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Email
-                  </span>
-
-                  <span>
-                    {sale.email_status === "sent" ? (
-                      <span className="text-green-600">
-                        Sent
-                      </span>
-                    ) : sale.email_status === "failed" ? (
-                      <span className="text-red-600">
-                        Failed
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">
-                        Not Sent
-                      </span>
-                    )}
-                  </span>
-                </div>
-
-                <div className="flex justify-between gap-4">
-                  <span className="text-slate-500">
-                    Date
-                  </span>
-
-                  <span className="text-right text-slate-800">
-                    {formatDate(sale.created_at)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

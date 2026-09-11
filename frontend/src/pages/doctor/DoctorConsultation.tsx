@@ -1,9 +1,26 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
   prescriptionsApi,
+  pharmacyApi,
   type MedicineLine,
+  type PharmacyMedicine,
 } from "../../lib/apiClient";
+import {
+  Stethoscope,
+  Calendar,
+  Clock,
+  User,
+  Phone,
+  FileText,
+  Pill,
+  Plus,
+  Trash,
+  CheckCircle,
+  AlertCircle,
+  ShieldCheck,
+  ArrowRight,
+} from "../../components/icons/Icons";
 
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) ||
@@ -16,19 +33,13 @@ interface AppointmentWithPatient {
   patient_phone?: string | null;
   patient_email?: string | null;
   appointment_date: string;
-
-  // Kept for compatibility with the existing database.
-  // This is the shift start, NOT an exact consultation time.
   appointment_time: string;
-
   shift_start?: string;
   shift_end?: string;
   shift_label?: string;
-
   doctor_name?: string;
   doctor_specialization?: string;
   department_name?: string;
-
   reason?: string | null;
   status?: string;
 }
@@ -52,22 +63,16 @@ interface SavedPrescription {
 
 function formatTime(time?: string | null) {
   if (!time) return "—";
-
   const parts = time.split(":");
-
   const hours = Number(parts[0]);
   const minutes = Number(parts[1]);
 
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes)
-  ) {
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
     return time;
   }
 
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
-
   return date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -76,16 +81,8 @@ function formatTime(time?: string | null) {
 
 function formatDate(dateString?: string | null) {
   if (!dateString) return "—";
-
-  // SQL Server can return:
-  // 2026-09-04T00:00:00.000Z
-  // or
-  // 2026-09-04
   const datePart = dateString.slice(0, 10);
-
-  const [year, month, day] = datePart
-    .split("-")
-    .map(Number);
+  const [year, month, day] = datePart.split("-").map(Number);
 
   if (
     !Number.isInteger(year) ||
@@ -95,11 +92,7 @@ function formatDate(dateString?: string | null) {
     return dateString;
   }
 
-  return new Date(
-    year,
-    month - 1,
-    day
-  ).toLocaleDateString("en-US", {
+  return new Date(year, month - 1, day).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -107,28 +100,18 @@ function formatDate(dateString?: string | null) {
   });
 }
 
-function getShiftLabel(
-  appointment: AppointmentWithPatient
-) {
-  if (
-    appointment.shift_start &&
-    appointment.shift_end
-  ) {
-    return `${formatTime(
-      appointment.shift_start
-    )} – ${formatTime(appointment.shift_end)}`;
+function getShiftLabel(appointment: AppointmentWithPatient) {
+  if (appointment.shift_start && appointment.shift_end) {
+    return `${formatTime(appointment.shift_start)} – ${formatTime(
+      appointment.shift_end
+    )}`;
   }
-
   if (appointment.shift_label) {
     return appointment.shift_label;
   }
-
   if (appointment.appointment_time) {
-    return `${formatTime(
-      appointment.appointment_time
-    )} shift`;
+    return `${formatTime(appointment.appointment_time)} shift`;
   }
-
   return "Shift unavailable";
 }
 
@@ -141,29 +124,29 @@ export default function DoctorConsultation() {
 
   const [appointment, setAppointment] =
     useState<AppointmentWithPatient | null>(null);
-
   const [savedPrescription, setSavedPrescription] =
     useState<SavedPrescription | null>(null);
-
   const [notes, setNotes] = useState("");
+  const [medicines, setMedicines] = useState<MedicineLine[]>([
+  {
+    medicine_id: "",
+    medicine_name: "",
+    quantity: "",
+    dosage: "",
+    duration: "",
+  },
+]);
 
-  const [medicines, setMedicines] =
-    useState<MedicineLine[]>([
-      {
-        medicine_name: "",
-        quantity: "",
-        dosage: "",
-        duration: "",
-      },
-    ]);
+const [pharmacyMedicines, setPharmacyMedicines] = useState<
+  PharmacyMedicine[]
+>([]);
+
+const [loadingMedicines, setLoadingMedicines] = useState(false);
 
   const [loading, setLoading] = useState(true);
-  const [loadingPrescription, setLoadingPrescription] =
-    useState(false);
-
+  const [loadingPrescription, setLoadingPrescription] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -173,10 +156,7 @@ export default function DoctorConsultation() {
       try {
         setLoading(true);
         setError("");
-
-        const token =
-          localStorage.getItem("hospital_token");
-
+        const token = localStorage.getItem("hospital_token");
         const appointmentResponse = await fetch(
           `${BASE_URL}/appointments/${appointmentId}`,
           {
@@ -187,47 +167,29 @@ export default function DoctorConsultation() {
         );
 
         if (!appointmentResponse.ok) {
-          throw new Error(
-            "Failed to load appointment."
-          );
+          throw new Error("Failed to load appointment details.");
         }
 
-        const appointmentData =
-          await appointmentResponse.json();
-
+        const appointmentData = await appointmentResponse.json();
         setAppointment(appointmentData);
 
-        // If appointment is already completed,
-        // load the saved consultation/prescription.
         if (isCompleted(appointmentData.status)) {
           setLoadingPrescription(true);
-
           try {
-            const prescriptionResponse =
-              await fetch(
-                `${BASE_URL}/prescriptions/appointment/${appointmentId}`,
-                {
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                  },
-                }
-              );
+            const prescriptionResponse = await fetch(
+              `${BASE_URL}/prescriptions/appointment/${appointmentId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
 
             if (prescriptionResponse.ok) {
-              const prescriptionData =
-                await prescriptionResponse.json();
-
-              setSavedPrescription(
-                prescriptionData
-              );
-            } else if (
-              prescriptionResponse.status === 404
-            ) {
+              const prescriptionData = await prescriptionResponse.json();
+              setSavedPrescription(prescriptionData);
+            } else if (prescriptionResponse.status === 404) {
               setSavedPrescription(null);
-            } else {
-              throw new Error(
-                "Failed to load saved consultation."
-              );
             }
           } finally {
             setLoadingPrescription(false);
@@ -235,11 +197,8 @@ export default function DoctorConsultation() {
         }
       } catch (err) {
         console.error(err);
-
         setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load consultation."
+          err instanceof Error ? err.message : "Failed to load consultation."
         );
       } finally {
         setLoading(false);
@@ -248,29 +207,67 @@ export default function DoctorConsultation() {
 
     loadData();
   }, [appointmentId]);
+useEffect(() => {
+  async function loadPharmacyMedicines() {
+    try {
+      setLoadingMedicines(true);
 
+      const data = await pharmacyApi.medicines();
+
+      setPharmacyMedicines(data);
+    } catch (err) {
+      console.error(
+        "Failed to load pharmacy medicines:",
+        err
+      );
+    } finally {
+      setLoadingMedicines(false);
+    }
+  }
+
+  loadPharmacyMedicines();
+}, []);
   function updateMedicine(
     index: number,
     field: keyof MedicineLine,
     value: string
   ) {
-    setMedicines((previous) =>
-      previous.map((medicine, i) =>
-        i === index
-          ? {
-              ...medicine,
-              [field]: value,
-            }
-          : medicine
-      )
+    setMedicines((prev) =>
+      prev.map((med, i) => (i === index ? { ...med, [field]: value } : med))
     );
   }
 
-  async function handleSubmit(
-    event: FormEvent
-  ) {
-    event.preventDefault();
+  function removeMedicine(index: number) {
+    if (medicines.length <= 1) {
+      setMedicines([
+        {
+  medicine_id: "",
+  medicine_name: "",
+  quantity: "",
+  dosage: "",
+  duration: "",
+},
+      ]);
+      return;
+    }
+    setMedicines((prev) => prev.filter((_, i) => i !== index));
+  }
 
+  function addMedicine() {
+    setMedicines((prev) => [
+      ...prev,
+      {
+  medicine_id: "",
+  medicine_name: "",
+  quantity: "",
+  dosage: "",
+  duration: "",
+},
+    ]);
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
     if (!appointment) return;
 
     try {
@@ -282,52 +279,34 @@ export default function DoctorConsultation() {
         patient_id: appointment.patient_id,
         consultation_notes: notes,
         medicines: medicines.filter(
-          (medicine) =>
-            medicine.medicine_name?.trim()
-        ),
+  (m) => m.medicine_id && m.medicine_name?.trim()
+),
       });
 
       setSaved(true);
 
-      // Reload the saved prescription so the page
-      // immediately becomes the completed/read-only view.
-      const token =
-        localStorage.getItem("hospital_token");
-
-      const prescriptionResponse =
-        await fetch(
-          `${BASE_URL}/prescriptions/appointment/${appointment.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+      const token = localStorage.getItem("hospital_token");
+      const prescriptionResponse = await fetch(
+        `${BASE_URL}/prescriptions/appointment/${appointment.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       if (prescriptionResponse.ok) {
-        const prescriptionData =
-          await prescriptionResponse.json();
-
-        setSavedPrescription(
-          prescriptionData
-        );
+        const prescriptionData = await prescriptionResponse.json();
+        setSavedPrescription(prescriptionData);
       }
 
-      setAppointment((previous) =>
-        previous
-          ? {
-              ...previous,
-              status: "completed",
-            }
-          : previous
+      setAppointment((prev) =>
+        prev ? { ...prev, status: "completed" } : prev
       );
     } catch (err) {
       console.error(err);
-
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to save consultation."
+        err instanceof Error ? err.message : "Failed to save consultation."
       );
     } finally {
       setSaving(false);
@@ -336,434 +315,404 @@ export default function DoctorConsultation() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl">
-        <p className="text-slate-500">
-          Loading consultation...
-        </p>
+      <div className="card py-16 text-center text-slate-400">
+        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-700 border-t-transparent" />
+        <p className="mt-2 text-xs">Loading consultation record...</p>
       </div>
     );
   }
 
   if (error && !appointment) {
     return (
-      <div className="max-w-2xl rounded-lg border border-red-200 bg-red-50 p-4">
-        <p className="text-sm text-red-700">
-          {error}
-        </p>
+      <div className="rounded-xl bg-rose-50 p-4 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+        {error}
       </div>
     );
   }
 
   if (!appointment) {
     return (
-      <div className="max-w-2xl">
-        <p className="text-slate-500">
-          Appointment not found.
-        </p>
+      <div className="card p-8 text-center text-sm text-slate-500">
+        Appointment not found.
       </div>
     );
   }
 
-  /*
-   * ============================================================
-   * COMPLETED APPOINTMENT
-   * ============================================================
-   */
-
-  if (
-    isCompleted(appointment.status) ||
-    saved
-  ) {
-    if (loadingPrescription) {
-      return (
-        <div className="max-w-2xl">
-          <p className="text-slate-500">
-            Loading saved consultation...
-          </p>
-        </div>
-      );
-    }
-
+  // Completed Consultation View
+  if (isCompleted(appointment.status) || saved) {
     return (
-      <div className="max-w-3xl">
-        <div className="flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center">
           <div>
-            <h1 className="text-2xl font-semibold text-teal-950">
-              Consultation —{" "}
-              {appointment.patient_name}
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+              <CheckCircle className="h-3.5 w-3.5" />
+              Completed Consultation & Prescription
+            </div>
+            <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+              Consultation Slip: {appointment.patient_name}
             </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Completed consultation record
+            <p className="text-xs text-slate-500">
+              Official medical visit transcript and prescription document.
             </p>
           </div>
 
-          <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-700">
-            Completed
-          </span>
-        </div>
-
-        {/* Appointment Information */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-base font-semibold text-teal-950">
-            Appointment Details
-          </h2>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm text-slate-500">
-                Patient
-              </p>
-
-              <p className="mt-1 font-medium text-slate-800">
-                {appointment.patient_name ||
-                  "—"}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm text-slate-500">
-                Appointment Date
-              </p>
-
-              <p className="mt-1 font-medium text-slate-800">
-                {formatDate(
-                  appointment.appointment_date
-                )}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm text-slate-500">
-                Doctor's Shift
-              </p>
-
-              <p className="mt-1 font-medium text-teal-950">
-                {getShiftLabel(appointment)}
-              </p>
-            </div>
-
-            {appointment.reason && (
-              <div>
-                <p className="text-sm text-slate-500">
-                  Reason for Visit
-                </p>
-
-                <p className="mt-1 font-medium text-slate-800">
-                  {appointment.reason}
-                </p>
-              </div>
-            )}
+          <div className="flex items-center gap-2 print:hidden">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="btn-outline inline-flex items-center gap-1.5 text-xs"
+            >
+              Print Prescription Slip
+            </button>
+            <Link
+              to="/doctor/appointments"
+              className="btn-primary inline-flex items-center gap-1.5 text-xs"
+            >
+              Back to Appointments
+            </Link>
           </div>
         </div>
 
-        {/* Consultation Notes */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-base font-semibold text-teal-950">
-            Consultation Notes
-          </h2>
+        {/* Appointment & Patient Info Card */}
+        <div className="card p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase">
+                Patient Name
+              </span>
+              <div className="mt-0.5 text-sm font-bold text-teal-950">
+                {appointment.patient_name || "—"}
+              </div>
+              <div className="text-xs text-slate-500">{appointment.patient_phone}</div>
+            </div>
 
-          <div className="mt-3 rounded-lg bg-slate-50 p-4">
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase">
+                Visit Date & Shift
+              </span>
+              <div className="mt-0.5 text-sm font-bold text-teal-950">
+                {formatDate(appointment.appointment_date)}
+              </div>
+              <div className="text-xs text-teal-800 font-medium">
+                {getShiftLabel(appointment)}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase">
+                Reason for Visit
+              </span>
+              <div className="mt-0.5 text-xs text-slate-700">
+                {appointment.reason || "General Consultation"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Clinical Notes Card */}
+        <div className="card p-6">
+          <h3 className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+            Clinical Consultation Notes
+          </h3>
+          <div className="mt-3 rounded-xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-800 border border-slate-200">
             {savedPrescription?.consultation_notes ? (
-              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                {
-                  savedPrescription.consultation_notes
-                }
+              <p className="whitespace-pre-wrap">
+                {savedPrescription.consultation_notes}
               </p>
             ) : (
-              <p className="text-sm italic text-slate-500">
-                No consultation notes were recorded.
-              </p>
+              <p className="italic text-slate-400">No notes recorded.</p>
             )}
           </div>
         </div>
 
-        {/* Prescription */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-base font-semibold text-teal-950">
-            Prescription
-          </h2>
+        {/* Prescription Table Card */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="flex items-center gap-2 text-xs font-bold tracking-wider text-teal-950 uppercase">
+              <Pill className="h-4 w-4 text-teal-700" />
+              Prescribed Medications
+            </h3>
+            <span className="text-xs text-slate-500 font-mono">
+              Rx Code: {savedPrescription?.id.slice(0, 8) || "RX-GEN"}
+            </span>
+          </div>
 
-          {!savedPrescription ||
-          savedPrescription.details.length === 0 ? (
-            <div className="mt-3 rounded-lg bg-slate-50 p-4">
-              <p className="text-sm italic text-slate-500">
-                No medicines were prescribed.
-              </p>
-            </div>
+          {!savedPrescription || savedPrescription.details.length === 0 ? (
+            <p className="mt-4 text-xs italic text-slate-400">
+              No medications prescribed during this visit.
+            </p>
           ) : (
-            <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50">
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 font-bold uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-4 py-3 font-medium text-slate-600">
-                      Medicine
-                    </th>
-
-                    <th className="px-4 py-3 font-medium text-slate-600">
-                      Quantity
-                    </th>
-
-                    <th className="px-4 py-3 font-medium text-slate-600">
-                      Dosage
-                    </th>
-
-                    <th className="px-4 py-3 font-medium text-slate-600">
-                      Duration
-                    </th>
+                    <th className="px-4 py-3">Medicine</th>
+                    <th className="px-4 py-3">Quantity</th>
+                    <th className="px-4 py-3">Dosage / Instructions</th>
+                    <th className="px-4 py-3">Duration</th>
                   </tr>
                 </thead>
-
-                <tbody className="divide-y divide-slate-200">
-                  {savedPrescription.details.map(
-                    (medicine) => (
-                      <tr key={medicine.id}>
-                        <td className="px-4 py-3 font-medium text-slate-800">
-                          {medicine.medicine_name}
-                        </td>
-
-                        <td className="px-4 py-3 text-slate-600">
-                          {medicine.quantity ||
-                            "—"}
-                        </td>
-
-                        <td className="px-4 py-3 text-slate-600">
-                          {medicine.dosage ||
-                            "—"}
-                        </td>
-
-                        <td className="px-4 py-3 text-slate-600">
-                          {medicine.duration ||
-                            "—"}
-                        </td>
-                      </tr>
-                    )
-                  )}
+                <tbody className="divide-y divide-slate-100">
+                  {savedPrescription.details.map((m) => (
+                    <tr key={m.id}>
+                      <td className="px-4 py-3 font-bold text-teal-950">
+                        {m.medicine_name}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {m.quantity || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {m.dosage || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {m.duration || "—"}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-
-        {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
-            <p className="text-sm text-red-700">
-              {error}
-            </p>
-          </div>
-        )}
       </div>
     );
   }
 
-  /*
-   * ============================================================
-   * NOT COMPLETED — SHOW CONSULTATION FORM
-   * ============================================================
-   */
-
+  // Active Consultation Form View
   return (
-    <div className="max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold text-teal-950">
-          Consultation —{" "}
-          {appointment.patient_name}
-        </h1>
-
-        <p className="mt-1 text-sm text-slate-500">
-          Record consultation notes and prescription.
-        </p>
-      </div>
-
-      {/* Appointment Information */}
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="text-base font-semibold text-teal-950">
-          Appointment Details
-        </h2>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <p className="text-sm text-slate-500">
-              Patient
-            </p>
-
-            <p className="mt-1 font-medium text-slate-800">
-              {appointment.patient_name || "—"}
-            </p>
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Header */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
+            <Stethoscope className="h-3.5 w-3.5" />
+            Live Consultation In Session
           </div>
-
-          <div>
-            <p className="text-sm text-slate-500">
-              Appointment Date
-            </p>
-
-            <p className="mt-1 font-medium text-slate-800">
-              {formatDate(
-                appointment.appointment_date
-              )}
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm text-slate-500">
-              Doctor's Shift
-            </p>
-
-            <p className="mt-1 font-medium text-teal-950">
-              {getShiftLabel(appointment)}
-            </p>
-          </div>
-
-          {appointment.reason && (
-            <div>
-              <p className="text-sm text-slate-500">
-                Reason for Visit
-              </p>
-
-              <p className="mt-1 font-medium text-slate-800">
-                {appointment.reason}
-              </p>
-            </div>
-          )}
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+            Consultation: {appointment.patient_name}
+          </h1>
+          <p className="text-xs text-slate-500">
+            Record physician observations, diagnosis, and digital prescription lines.
+          </p>
         </div>
 
-        <p className="mt-4 text-xs text-slate-500">
-          This patient is booked for the doctor's
-          working shift, not an exact consultation
-          time.
-        </p>
+        <Link
+          to="/doctor/appointments"
+          className="btn-outline self-start sm:self-auto text-xs"
+        >
+          ← Back to Appointments
+        </Link>
+      </div>
+
+      {/* Appointment Information Card */}
+      <div className="card p-6">
+        <h2 className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+          Patient & Shift Context
+        </h2>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <span className="text-[11px] text-slate-400">Patient</span>
+            <div className="font-bold text-teal-950 text-sm">
+              {appointment.patient_name || "—"}
+            </div>
+            <div className="text-xs text-slate-500">{appointment.patient_phone}</div>
+          </div>
+
+          <div>
+            <span className="text-[11px] text-slate-400">Date & OPD Shift</span>
+            <div className="font-bold text-teal-950 text-sm">
+              {formatDate(appointment.appointment_date)}
+            </div>
+            <div className="text-xs text-teal-800 font-medium">
+              {getShiftLabel(appointment)}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[11px] text-slate-400">Reason for Consultation</span>
+            <div className="text-xs text-slate-700">
+              {appointment.reason || "General checkup"}
+            </div>
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-700">
-            {error}
-          </p>
+        <div className="rounded-xl bg-rose-50 p-4 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="mt-6 space-y-6"
-      >
-        {/* Consultation Notes */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <label className="text-sm font-medium text-slate-700">
-            Consultation Notes
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Clinical Notes */}
+        <div className="card p-6">
+          <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+            Clinical Examination & Diagnostic Notes
           </label>
-
+          <p className="text-xs text-slate-500 mt-1">
+            Include symptoms, blood pressure, findings, and clinical instructions.
+          </p>
           <textarea
-            className="input-field mt-2 w-full"
             rows={5}
             value={notes}
-            onChange={(event) =>
-              setNotes(event.target.value)
-            }
-            placeholder="Enter consultation notes..."
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Document patient history, clinical vitals, differential diagnosis, and lifestyle advice..."
+            className="input-field mt-3 text-xs"
           />
         </div>
 
-        {/* Prescription */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700">
-              Prescription
-            </label>
+        {/* Prescription Builder */}
+        <div className="card p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-xs font-bold tracking-wider text-teal-950 uppercase">
+                Prescription Medicines
+              </h3>
+              <p className="text-xs text-slate-500">
+                Medicines prescribed will appear in the pharmacy sales dispatch system.
+              </p>
+            </div>
 
             <button
               type="button"
-              className="text-sm font-medium text-teal-700 hover:underline"
-              onClick={() =>
-                setMedicines((previous) => [
-                  ...previous,
-                  {
-                    medicine_name: "",
-                    quantity: "",
-                    dosage: "",
-                    duration: "",
-                  },
-                ])
-              }
+              onClick={addMedicine}
+              className="btn-outline inline-flex items-center gap-1.5 text-xs py-1.5 px-3"
             >
-              + Add medicine
+              <Plus className="h-3.5 w-3.5" />
+              Add Medicine Line
             </button>
           </div>
 
-          <div className="mt-3 space-y-3">
-            {medicines.map(
-              (medicine, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-1 gap-2 sm:grid-cols-4"
-                >
-                  <input
-                    className="input-field"
-                    placeholder="Medicine"
-                    value={
-                      medicine.medicine_name
-                    }
-                    onChange={(event) =>
-                      updateMedicine(
-                        index,
-                        "medicine_name",
-                        event.target.value
-                      )
-                    }
-                  />
+          <div className="mt-4 space-y-3">
+            {medicines.map((med, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-1 items-center gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-12"
+              >
+                <div className="sm:col-span-4">
+  <select
+    value={med.medicine_id}
+    disabled={loadingMedicines}
+    required
+    onChange={(e) => {
+      const medicineId = e.target.value;
 
-                  <input
-                    className="input-field"
-                    placeholder="Quantity"
-                    value={medicine.quantity}
-                    onChange={(event) =>
-                      updateMedicine(
-                        index,
-                        "quantity",
-                        event.target.value
-                      )
-                    }
-                  />
+      const selectedMedicine =
+        pharmacyMedicines.find(
+          (medicine) => medicine.id === medicineId
+        );
 
-                  <input
-                    className="input-field"
-                    placeholder="Dosage"
-                    value={medicine.dosage}
-                    onChange={(event) =>
-                      updateMedicine(
-                        index,
-                        "dosage",
-                        event.target.value
-                      )
-                    }
-                  />
+      setMedicines((prev) =>
+        prev.map((item, i) =>
+          i === index
+            ? {
+                ...item,
+                medicine_id: medicineId,
+                medicine_name:
+                  selectedMedicine?.name || "",
+              }
+            : item
+        )
+      );
+    }}
+    className="input-field text-xs"
+  >
+    <option value="">
+      {loadingMedicines
+        ? "Loading pharmacy medicines..."
+        : "Select medicine..."}
+    </option>
 
+    {pharmacyMedicines.map((medicine) => (
+      <option
+        key={medicine.id}
+        value={medicine.id}
+      >
+        {medicine.name}
+      </option>
+    ))}
+  </select>
+</div>
+
+                <div className="sm:col-span-2">
                   <input
-                    className="input-field"
-                    placeholder="Duration"
-                    value={medicine.duration}
-                    onChange={(event) =>
-                      updateMedicine(
-                        index,
-                        "duration",
-                        event.target.value
-                      )
+                    type="text"
+                    placeholder="Qty (e.g. 10 tabs)"
+                    value={med.quantity || ""}
+                    onChange={(e) =>
+                      updateMedicine(index, "quantity", e.target.value)
                     }
+                    className="input-field text-xs"
                   />
                 </div>
-              )
-            )}
+
+                <div className="sm:col-span-3">
+                  <input
+                    type="text"
+                    placeholder="Dosage (e.g. 1 tab TDS pc)"
+                    value={med.dosage || ""}
+                    onChange={(e) =>
+                      updateMedicine(index, "dosage", e.target.value)
+                    }
+                    className="input-field text-xs"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="Duration (5 days)"
+                    value={med.duration || ""}
+                    onChange={(e) =>
+                      updateMedicine(index, "duration", e.target.value)
+                    }
+                    className="input-field text-xs"
+                  />
+                </div>
+
+                <div className="flex justify-center sm:col-span-1">
+                  <button
+                    type="button"
+                    onClick={() => removeMedicine(index)}
+                    title="Remove item"
+                    className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                  >
+                    <Trash className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {saving
-            ? "Saving..."
-            : "Save Consultation & Prescription"}
-        </button>
+        {/* Submit */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <Link
+            to="/doctor/appointments"
+            className="btn-outline text-xs"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving}
+            className="btn-primary inline-flex items-center gap-2 py-3 px-6 shadow-md shadow-teal-900/10 text-xs disabled:opacity-60"
+          >
+            {saving ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Completing Visit...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4" />
+                Save & Issue Prescription
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </div>
   );

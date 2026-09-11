@@ -1,6 +1,15 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { authApi, saveSession } from "../../lib/apiClient";
+import {
+  Hospital,
+  ShieldCheck,
+  Mail,
+  ArrowRight,
+  AlertCircle,
+  Activity,
+  CheckCircle,
+} from "../../components/icons/Icons";
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");
@@ -13,244 +22,206 @@ export default function AdminLogin() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-
     setError(null);
 
     if (!email.trim() || !password) {
-      setError("Please enter your email and password.");
+      setError("Please enter both email and password.");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Admin login explicitly requests admin access.
       const { token, user } = await authApi.login(
         email.trim(),
         password,
         "admin"
       );
-
       saveSession(token, user);
-
       navigate("/admin/dashboard");
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Invalid email or password."
+        err instanceof Error ? err.message : "Invalid email or password."
       );
     } finally {
       setLoading(false);
     }
   }
 
-  function handleBack() {
-    navigate("/");
-  }
-
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="flex min-h-screen">
-
-        {/* Left branding panel */}
-        <div className="hidden w-1/2 bg-teal-950 lg:flex">
-          <div className="flex w-full flex-col justify-between p-12 xl:p-16">
-
+    <div className="flex min-h-screen bg-slate-50 font-sans">
+      {/* Left Branding Showcase (Desktop) */}
+      <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-teal-950 via-teal-900 to-teal-850 p-12 text-white lg:flex xl:p-16">
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-lg shadow-teal-950/40">
+              <Hospital className="h-6 w-6" />
+            </div>
             <div>
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-xl font-bold text-teal-900">
-                  +
-                </div>
-
-                <div>
-                  <p className="text-lg font-bold text-white">
-                    Smart Hospital
-                  </p>
-
-                  <p className="text-xs text-teal-200">
-                    Management System
-                  </p>
-                </div>
-              </div>
+              <span className="text-lg font-extrabold tracking-tight">
+                SMART HOSPITAL
+              </span>
+              <span className="block text-[11px] font-semibold tracking-widest text-teal-300 uppercase">
+                Healthcare Management Suite
+              </span>
             </div>
-
-            <div className="max-w-lg">
-              <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-teal-300">
-                Admin Portal
-              </p>
-
-              <h1 className="text-4xl font-bold leading-tight text-white xl:text-5xl">
-                Everything your
-                <span className="block text-teal-300">
-                  hospital team needs.
-                </span>
-              </h1>
-
-              <p className="mt-6 max-w-md text-base leading-7 text-slate-300">
-                Secure access for hospital administration
-                and management.
-              </p>
-            </div>
-
-            <p className="text-sm text-teal-200">
-              Smart Hospital Management System
-            </p>
           </div>
         </div>
 
-        {/* Login panel */}
-        <div className="flex w-full items-center justify-center px-6 py-10 lg:w-1/2">
-          <div className="w-full max-w-md">
+        <div className="relative z-10 max-w-lg space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-800/80 px-3.5 py-1 text-xs font-semibold text-teal-200 ring-1 ring-teal-600/40 backdrop-blur">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            Administrative Security Gateway
+          </div>
 
-            {/* Back button */}
-            <button
-              type="button"
-              onClick={handleBack}
-              className="mb-6 inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-teal-800"
-            >
-              <span className="text-lg leading-none">
-                ←
+          <h1 className="text-4xl font-extrabold tracking-tight xl:text-5xl">
+            Command Center for Hospital Operations
+          </h1>
+
+          <p className="text-base leading-relaxed text-teal-100">
+            Real-time control over medical departments, physician schedules, patient OPD token flows, pharmaceutical inventory, and financial analytics.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4 pt-4 text-xs">
+            <div className="flex items-center gap-2 text-teal-200">
+              <CheckCircle className="h-4 w-4 text-emerald-400" />
+              <span>Role-Based Access Control</span>
+            </div>
+            <div className="flex items-center gap-2 text-teal-200">
+              <CheckCircle className="h-4 w-4 text-emerald-400" />
+              <span>256-Bit SSL Encrypted</span>
+            </div>
+            <div className="flex items-center gap-2 text-teal-200">
+              <CheckCircle className="h-4 w-4 text-emerald-400" />
+              <span>Real-Time Audit Logging</span>
+            </div>
+            <div className="flex items-center gap-2 text-teal-200">
+              <CheckCircle className="h-4 w-4 text-emerald-400" />
+              <span>Live OPD Shift Monitor</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10 text-xs text-teal-300">
+          Smart Hospital Management System © 2026 • Enterprise Edition
+        </div>
+      </div>
+
+      {/* Right Login Form */}
+      <div className="flex w-full items-center justify-center px-4 py-12 sm:px-6 lg:w-1/2">
+        <div className="w-full max-w-md space-y-8">
+          {/* Back link */}
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 transition-colors hover:text-teal-900"
+          >
+            ← Back to Public Website
+          </Link>
+
+          {/* Mobile brand header */}
+          <div className="text-center lg:hidden">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-900 text-white shadow-md">
+              <Hospital className="h-6 w-6" />
+            </div>
+            <h2 className="mt-3 text-xl font-bold text-teal-950">
+              Smart Hospital
+            </h2>
+            <p className="text-xs text-slate-500">
+              Administrator Authentication
+            </p>
+          </div>
+
+          <div className="card border-slate-200/80 p-8 shadow-xl shadow-slate-200/50 sm:p-10">
+            <div>
+              <span className="inline-block rounded-full bg-teal-50 px-3 py-1 text-xs font-bold tracking-wider text-teal-800 uppercase ring-1 ring-teal-200">
+                Staff Authentication
               </span>
-              Back to Website
-            </button>
-
-            {/* Mobile branding */}
-            <div className="mb-8 text-center lg:hidden">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-teal-900 text-xl font-bold text-white">
-                +
-              </div>
-
-              <h1 className="mt-3 text-xl font-bold text-teal-950">
-                Smart Hospital
-              </h1>
-
-              <p className="text-sm text-slate-500">
-                Management System
+              <h2 className="mt-3 text-2xl font-bold tracking-tight text-teal-950">
+                Admin Sign In
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Enter your administrative credentials to access the console.
               </p>
             </div>
 
-            <div className="rounded-2xl bg-white p-8 shadow-xl shadow-slate-200/70 sm:p-10">
-
-              <div className="mb-8">
-                <span className="inline-flex rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-teal-800">
-                  Admin Portal
-                </span>
-
-                <h2 className="mt-4 text-3xl font-bold text-slate-900">
-                  Welcome back
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Sign in with your hospital administrator account.
-                </p>
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                  Hospital Email Address
+                </label>
+                <div className="relative mt-1.5">
+                  <Mail className="pointer-events-none absolute top-3.5 left-3.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@hospital.com"
+                    disabled={loading}
+                    className="input-field pl-10"
+                  />
+                </div>
               </div>
 
-              <form onSubmit={handleSubmit}>
-
-                {/* Email */}
-                <div>
-                  <label
-                    htmlFor="admin-email"
-                    className="mb-2 block text-sm font-semibold text-slate-700"
+              {/* Password */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                  Password
+                </label>
+                <div className="relative mt-1.5">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    disabled={loading}
+                    className="input-field pr-16"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-xs font-semibold text-teal-700 hover:text-teal-950"
                   >
-                    Email address
-                  </label>
-
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                      @
-                    </span>
-
-                    <input
-                      id="admin-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your hospital email"
-                      autoComplete="username"
-                      disabled={loading}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                  </div>
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
                 </div>
+              </div>
 
-                {/* Password */}
-                <div className="mt-5">
-                  <label
-                    htmlFor="admin-password"
-                    className="mb-2 block text-sm font-semibold text-slate-700"
-                  >
-                    Password
-                  </label>
-
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                      ●
-                    </span>
-
-                    <input
-                      id="admin-password"
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      autoComplete="current-password"
-                      disabled={loading}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3.5 pl-11 pr-20 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:bg-white focus:ring-4 focus:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowPassword((current) => !current)
-                      }
-                      disabled={loading}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 disabled:opacity-50"
-                    >
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
+              {/* Error Message */}
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span>{error}</span>
                 </div>
+              )}
 
-                {/* Error */}
-                {error && (
-                  <div className="mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
-                    <p className="text-sm font-medium text-red-700">
-                      {error}
-                    </p>
-                  </div>
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary flex w-full items-center justify-center gap-2 py-3 shadow-lg shadow-teal-900/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Authenticating...
+                  </>
+                ) : (
+                  <>
+                    <span>Authenticate & Enter</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </>
                 )}
+              </button>
+            </form>
 
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-7 flex w-full items-center justify-center rounded-xl bg-teal-900 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/10 transition hover:bg-teal-800 focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loading ? (
-                    <>
-                      <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Signing in...
-                    </>
-                  ) : (
-                    "Sign in"
-                  )}
-                </button>
-              </form>
-
-              <div className="mt-8 border-t border-slate-100 pt-6 text-center">
-                <p className="text-xs leading-5 text-slate-400">
-                  Authorized hospital administrators only.
-                </p>
-              </div>
+            <div className="mt-6 border-t border-slate-100 pt-4 text-center">
+              <p className="text-[11px] text-slate-400">
+                Restricted area. Unauthorized access attempts are monitored and recorded.
+              </p>
             </div>
-
-            <p className="mt-6 text-center text-xs text-slate-400">
-              Smart Hospital Management System
-            </p>
           </div>
         </div>
       </div>

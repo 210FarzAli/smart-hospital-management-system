@@ -37,11 +37,12 @@ function getSession(sessionToken) {
     now - session.updatedAt > SESSION_TTL_MS
   ) {
     session = {
-      history: [],
-      booking: null,
-      doctorOptions: [],
-      updatedAt: now,
-    };
+  history: [],
+  booking: null,
+  doctorOptions: [],
+  doctorSuggestionPending: false,
+  updatedAt: now,
+};
 
     sessions.set(sessionToken, session);
   }
@@ -1637,6 +1638,246 @@ function isDoctorListQuestion(message) {
 }
 
 // ============================================================
+// DOCTOR SUGGESTION REQUEST
+//
+// This is different from:
+// "which doctors are available?"
+//
+// Flow:
+// User: "doctor suggest karo"
+// AI: "Aap ko kya symptoms ho rahe hain?"
+// User: "mujhe sar mein dard aur chakkar hain"
+// AI: checks hospital doctors and suggests an appropriate doctor.
+// ============================================================
+
+function isDoctorSuggestionRequest(message) {
+  const text = normalizeText(message);
+
+  return (
+    /\bsuggest\b.*\bdoctor\b/.test(text) ||
+    /\brecommend\b.*\bdoctor\b/.test(text) ||
+    /\bdoctor\b.*\bsuggest\b/.test(text) ||
+    /\bdoctor\b.*\brecommend\b/.test(text) ||
+    /\bwhich doctor\b/.test(text) ||
+    /\bwhat doctor\b/.test(text) ||
+    /\bdoctor for my symptoms\b/.test(text) ||
+    /\bdoctor for these symptoms\b/.test(text) ||
+    text.includes("doctor suggest karo") ||
+    text.includes("doctor recommend karo") ||
+    text.includes("doctor batao") ||
+    text.includes("doctor batayein") ||
+    text.includes("kis doctor") ||
+    text.includes("kon sa doctor") ||
+    text.includes("kaun sa doctor")
+  );
+}
+
+// ============================================================
+// SUGGEST DOCTOR BASED ON SYMPTOMS
+//
+// The AI only routes the patient to an existing hospital
+// doctor. It does NOT diagnose or prescribe medicine.
+// ============================================================
+
+async function suggestDoctorForSymptoms(
+  pool,
+  symptoms,
+  language,
+  session
+) {
+  const doctorsResult =
+    await pool.request().query(`
+      SELECT
+        d.id,
+        d.full_name,
+        d.specialization,
+        d.department_id,
+        dep.name AS department_name
+      FROM doctors d
+      INNER JOIN departments dep
+        ON dep.id = d.department_id
+      WHERE d.status = 'active'
+        AND dep.status = 'active'
+      ORDER BY d.full_name
+    `);
+
+  const doctors =
+    doctorsResult.recordset;
+
+  if (!doctors.length) {
+    if (language === "urdu") {
+      return "اس وقت کوئی active doctor available نہیں ہے۔";
+    }
+
+    if (language === "roman_urdu") {
+      return "Is waqt koi active doctor available nahi hai.";
+    }
+
+    return "There are currently no active doctors available.";
+  }
+
+  const doctorOptions =
+    doctors
+      .map(
+        (doctor, index) =>
+          `${index + 1}. ${doctor.full_name} | Specialization: ${
+            doctor.specialization || "General"
+          } | Department: ${
+            doctor.department_name || "General"
+          }`
+      )
+      .join("\n");
+
+  const prompt = `
+You are helping route a hospital patient to an appropriate EXISTING doctor.
+
+This is NOT a diagnosis.
+Do NOT recommend medicines.
+Do NOT prescribe treatment.
+
+Patient symptoms:
+${symptoms}
+
+Available hospital doctors:
+${doctorOptions}
+
+Choose the most appropriate doctor ONLY from the doctors listed above.
+
+Return ONLY valid JSON:
+
+{
+  "doctor_number": number,
+  "reason": "short explanation"
+}
+
+The reason must be a simple routing explanation such as:
+"This doctor specializes in conditions commonly related to these symptoms."
+
+Do not invent doctors.
+Do not invent departments.
+`;
+
+  try {
+    const completion =
+      await groq.chat.completions.create({
+        model: "openai/gpt-oss-120b",
+        temperature: 0.1,
+        response_format: {
+          type: "json_object",
+        },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a hospital doctor-routing assistant. Return valid JSON only.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      });
+
+    const content =
+      completion.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error(
+        "No doctor suggestion returned."
+      );
+    }
+
+    const result =
+      JSON.parse(content);
+
+    const index =
+      Number(result.doctor_number) - 1;
+
+    const doctor =
+      doctors[index];
+
+    if (!doctor) {
+      throw new Error(
+        "Invalid doctor selected by AI."
+      );
+    }
+
+    // ============================================================
+// SAVE THE SUGGESTED DOCTOR INTO THE CURRENT BOOKING
+//
+// This allows the patient to say:
+// "ok book my appointment"
+//
+// without having to select the doctor again.
+// ============================================================
+
+session.booking = mergeBooking(
+  session.booking,
+  {
+    doctor_id: doctor.id,
+    doctor_name: doctor.full_name,
+    department: doctor.department_name,
+  }
+);
+
+session.doctorOptions = [];
+
+    const cleanName =
+      String(
+        doctor.full_name || ""
+      )
+        .replace(
+          /^(dr\.?\s*)+/i,
+          ""
+        )
+        .trim();
+
+    const displayName =
+      `Dr. ${cleanName}`;
+
+    if (language === "urdu") {
+      return `آپ کی بتائی ہوئی علامات کی بنیاد پر میں تجویز کروں گا کہ آپ ${displayName} سے رجوع کریں۔
+
+Specialization: ${doctor.specialization || "General"}
+Department: ${doctor.department_name || "General"}
+
+یہ صرف عمومی doctor-routing guidance ہے، حتمی medical evaluation doctor کرے گا۔`;
+    }
+
+    if (language === "roman_urdu") {
+      return `Aap ki batayi hui symptoms ki bunyaad par main suggest karunga ke aap ${displayName} se consult karein.
+
+Specialization: ${doctor.specialization || "General"}
+Department: ${doctor.department_name || "General"}
+
+Yeh sirf general doctor-routing guidance hai. Final medical evaluation doctor karega.`;
+    }
+
+    return `Based on the symptoms you described, I suggest consulting ${displayName}.
+
+Specialization: ${doctor.specialization || "General"}
+Department: ${doctor.department_name || "General"}
+
+This is general doctor-routing guidance. The doctor should perform the final medical evaluation.`;
+  } catch (error) {
+    console.error(
+      "Doctor suggestion error:",
+      error.message
+    );
+
+    if (language === "urdu") {
+      return "میں آپ کی علامات کے لیے مناسب doctor منتخب نہیں کر سکا۔ براہِ کرم اپنی علامات تھوڑی مزید تفصیل سے بتائیں۔";
+    }
+
+    if (language === "roman_urdu") {
+      return "Main aap ki symptoms ke liye suitable doctor select nahi kar saka. Please apni symptoms thori detail mein batayein.";
+    }
+
+    return "I could not determine the most appropriate doctor yet. Please describe your symptoms in a little more detail.";
+  }
+}
+
+// ============================================================
 // SELECT DOCTOR FROM OPTIONS
 // ============================================================
 
@@ -2364,30 +2605,65 @@ async function generateHealthResponse(
   const systemPrompt = `
 You are the Hospital AI Health Assistant.
 
-Your job is to provide general health information and guidance,
-not a medical diagnosis.
+You provide general health information and guidance.
+You are NOT a doctor and you must NOT diagnose or prescribe treatment.
 
 ${languageInstruction}
 
-IMPORTANT RULES:
+IMPORTANT MEDICAL SAFETY RULES:
 
-1. Answer the user's CURRENT message.
-2. Do not automatically continue an appointment booking just
-   because an appointment conversation happened earlier.
-3. If the user describes a symptom such as headache, fever,
-   cough, stomach pain, weakness, dizziness, etc., answer the
-   health question normally.
-4. Give general, safe information.
-5. You may ask relevant follow-up questions when useful.
-6. Do not tell the patient to start, stop, replace, or change
-   prescription medication.
-7. If symptoms could indicate an emergency, clearly recommend
-   urgent medical care.
-8. If appropriate, mention that a doctor should evaluate the
-   patient.
-9. Keep the response reasonably concise and conversational.
-10. Do not say that you are unable to help simply because the
-    user previously started an appointment booking.
+1. NEVER prescribe or recommend any medicine.
+
+2. NEVER give:
+- Medicine names as treatment recommendations
+- Dosages
+- Number of tablets
+- Frequency of medication
+- Duration of medication
+- Antibiotics
+- Prescription medicines
+- Medication treatment plans
+- Instructions to start, stop, or change medication
+
+3. If the user asks which medicine they should take,
+do NOT provide a medicine name.
+
+Instead, politely explain that you cannot prescribe
+or recommend medication and advise the user to consult
+a qualified doctor or pharmacist.
+
+4. You MAY provide general information about:
+- Common symptoms
+- Common diseases and conditions
+- Possible general causes
+- Basic non-medication self-care
+- Warning signs
+- When to see a doctor
+
+5. Do not make a definite diagnosis.
+Use phrases such as:
+"can be associated with"
+"may be caused by"
+"could be related to"
+
+6. If the symptoms suggest a possible emergency,
+tell the user to seek urgent medical attention.
+
+7. If appropriate, recommend the relevant hospital
+doctor or department.
+
+8. Answer the user's CURRENT message.
+
+9. Do not automatically continue an appointment booking
+just because an appointment conversation happened earlier.
+
+10. Keep responses short, clear, safe, and conversational.
+
+IMPORTANT:
+Hospital-specific questions such as doctors, departments,
+doctor availability, doctor timings, and appointments are
+handled by the hospital system separately.
+Do not invent hospital-specific information.
 
 Previous conversation:
 ${recentHistory || "(none)"}
@@ -2549,10 +2825,14 @@ router.post(
           sessionToken
         );
 
-      const language =
-        detectLanguage(
-          message
-        );
+      const detectedLanguage = detectLanguage(message);
+
+const language =
+  detectedLanguage === "ur"
+    ? "urdu"
+    : detectedLanguage === "ur-roman"
+    ? "roman_urdu"
+    : "english";
 
       const pool =
   await getPool();
@@ -2690,6 +2970,97 @@ if (
     reply,
     conversationId:
       sessionToken,
+    language,
+  });
+}
+
+// ======================================================
+// DOCTOR SUGGESTION FLOW
+//
+// Example:
+// "doctor suggest karo"
+// -> ask for symptoms
+//
+// Then:
+// "mujhe sar mein dard aur chakkar hain"
+// -> suggest an existing hospital doctor
+// ======================================================
+
+if (
+  isDoctorSuggestionRequest(message) &&
+  !session.doctorSuggestionPending
+) {
+  session.doctorSuggestionPending = true;
+
+  let reply;
+
+  if (language === "urdu") {
+    reply =
+      "ضرور۔ مناسب doctor تجویز کرنے کے لیے براہِ کرم اپنی symptoms بتائیں۔ مثال کے طور پر درد کہاں ہے، کب سے ہے اور کوئی دوسری اہم علامت بھی ہے؟";
+  } else if (
+    language === "roman_urdu"
+  ) {
+    reply =
+      "Zaroor. Suitable doctor suggest karne ke liye please apni symptoms batayein. Misal ke taur par dard kahan hai, kab se hai aur koi doosri important symptom bhi hai?";
+  } else {
+    reply =
+      "Sure. To suggest the appropriate doctor, please describe your symptoms. For example, where the problem is, how long you have had it, and any other important symptoms.";
+  }
+
+  addHistory(
+    session,
+    "user",
+    message
+  );
+
+  addHistory(
+    session,
+    "assistant",
+    reply
+  );
+
+  return res.json({
+    reply,
+    conversationId: sessionToken,
+    language,
+  });
+}
+
+// ======================================================
+// ANSWER PENDING DOCTOR SUGGESTION
+//
+// The user's current message is treated as symptom
+// information, not as an appointment booking request.
+// ======================================================
+
+if (
+  session.doctorSuggestionPending
+) {
+  session.doctorSuggestionPending = false;
+
+  const reply =
+  await suggestDoctorForSymptoms(
+    pool,
+    message,
+    language,
+    session
+  );
+
+  addHistory(
+    session,
+    "user",
+    message
+  );
+
+  addHistory(
+    session,
+    "assistant",
+    reply
+  );
+
+  return res.json({
+    reply,
+    conversationId: sessionToken,
     language,
   });
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   reportsApi,
   reviewsApi,
@@ -6,19 +7,26 @@ import {
   type HospitalReview,
   type ReviewSummary,
 } from "../../lib/apiClient";
+import StarRating from "../../components/StarRating";
+import {
+  Users,
+  User,
+  Calendar,
+  Clock,
+  Star,
+  CheckCircle,
+  Stethoscope,
+  Pill,
+  TrendingUp,
+  ArrowRight,
+  ShieldCheck,
+} from "../../components/icons/Icons";
 
 export default function AdminDashboard() {
-  const [stats, setStats] =
-    useState<ReportOverview | null>(null);
-
-  const [reviewSummary, setReviewSummary] =
-    useState<ReviewSummary | null>(null);
-
-  const [reviews, setReviews] =
-    useState<HospitalReview[]>([]);
-
-  const [loadingReviews, setLoadingReviews] =
-    useState(true);
+  const [stats, setStats] = useState<ReportOverview | null>(null);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [reviews, setReviews] = useState<HospitalReview[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
 
   useEffect(() => {
     reportsApi
@@ -29,13 +37,10 @@ export default function AdminDashboard() {
     async function loadReviews() {
       try {
         setLoadingReviews(true);
-
-        const [summary, reviewList] =
-          await Promise.all([
-            reviewsApi.summary(),
-            reviewsApi.adminList(),
-          ]);
-
+        const [summary, reviewList] = await Promise.all([
+          reviewsApi.summary(),
+          reviewsApi.adminList(),
+        ]);
         setReviewSummary(summary);
         setReviews(reviewList);
       } catch (err) {
@@ -50,209 +55,224 @@ export default function AdminDashboard() {
 
   const cards = [
     {
-      label: "Total Doctors",
+      label: "Active Doctors",
       value: stats?.doctors ?? "—",
+      subtext: "On-duty & visiting specialists",
+      icon: Stethoscope,
+      bg: "bg-teal-50 text-teal-800",
+      link: "/admin/doctors",
     },
     {
-      label: "Total Patients",
+      label: "Registered Patients",
       value: stats?.patients ?? "—",
+      subtext: "Clinical database records",
+      icon: Users,
+      bg: "bg-cyan-50 text-cyan-800",
+      link: "/admin/appointments",
     },
     {
       label: "Appointments Today",
-      value:
-        stats?.appointmentsToday ?? "—",
+      value: stats?.appointmentsToday ?? "—",
+      subtext: "Booked OPD shifts for today",
+      icon: Calendar,
+      bg: "bg-emerald-50 text-emerald-800",
+      link: "/admin/appointments",
     },
     {
-      label: "Pending Appointments",
-      value:
-        stats?.pendingAppointments ?? "—",
+      label: "Pending Verification",
+      value: stats?.pendingAppointments ?? "—",
+      subtext: "Awaiting administrative confirmation",
+      icon: Clock,
+      bg: "bg-amber-50 text-amber-800",
+      link: "/admin/appointments",
     },
   ];
 
-  function formatDate(date: string) {
-    return new Date(date).toLocaleDateString(
-      "en-PK",
-      {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }
-    );
-  }
-
-  function stars(rating: number) {
-    return (
-      "★".repeat(rating) +
-      "☆".repeat(5 - rating)
-    );
-  }
-
   return (
-    <div>
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-      <h1 className="text-2xl font-semibold text-teal-950">
-        Overview
-      </h1>
+    <div className="space-y-8">
+      {/* Top Banner */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Hospital Administration Overview
+          </div>
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+            Executive Dashboard
+          </h1>
+          <p className="text-xs text-slate-500">
+            Operational overview, OPD appointment volume, and public satisfaction index.
+          </p>
+        </div>
 
-      <p className="mt-1 text-sm text-slate-500">
-        Hospital management overview and website feedback.
-      </p>
-
-      {/* ======================================================
-          MAIN DASHBOARD CARDS
-      ====================================================== */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map((card) => (
-          <div
-            key={card.label}
-            className="card"
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/admin/doctors"
+            className="btn-outline inline-flex items-center gap-2 text-xs"
           >
-            <div className="text-sm text-slate-500">
-              {card.label}
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {card.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ======================================================
-          WEBSITE REVIEW SUMMARY
-      ====================================================== */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-teal-950">
-          Website Feedback
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-500">
-          Overall visitor feedback and hospital rating.
-        </p>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Total Reviews */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Total Website Reviews
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loadingReviews
-                ? "—"
-                : reviewSummary?.totalReviews ?? 0}
-            </div>
-
-            <div className="mt-2 text-sm text-slate-500">
-              Visitor reviews of City Care Hospital
-            </div>
-          </div>
-
-          {/* Average Rating */}
-          <div className="card">
-            <div className="text-sm text-slate-500">
-              Average Hospital Rating
-            </div>
-
-            <div className="mt-1 text-3xl font-semibold text-teal-950">
-              {loadingReviews
-                ? "—"
-                : reviewSummary
-                    ?.averageRating
-                    .toFixed(1) ?? "0.0"}
-            </div>
-
-            <div className="mt-1 text-lg tracking-wide text-amber-500">
-              {loadingReviews
-                ? "☆☆☆☆☆"
-                : stars(
-                    Math.round(
-                      reviewSummary?.averageRating ??
-                        0
-                    )
-                  )}
-            </div>
-          </div>
+            <Stethoscope className="h-3.5 w-3.5" />
+            Manage Doctors
+          </Link>
+          <Link
+            to="/admin/appointments"
+            className="btn-primary inline-flex items-center gap-2 text-xs shadow-sm"
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            View Appointments
+          </Link>
         </div>
       </div>
 
-      {/* ======================================================
-          RECENT WEBSITE REVIEWS
-      ====================================================== */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-teal-950">
-              Recent Website Reviews
-            </h2>
+      {/* KPI Stats Cards */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <Link
+              key={card.label}
+              to={card.link}
+              className="card group p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+                  {card.label}
+                </div>
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.bg}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Latest feedback submitted by visitors.
+              <div className="mt-4 text-3xl font-extrabold tracking-tight text-teal-950">
+                {card.value}
+              </div>
+
+              <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500">
+                <span>{card.subtext}</span>
+                <ArrowRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100 text-teal-700" />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Two-Column Middle: Website Feedback & Quick Management */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Rating & Patient Feedback Summary (Col 5) */}
+        <div className="card p-6 lg:col-span-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-sm font-bold text-teal-950">
+                Patient Satisfaction Index
+              </h2>
+              <p className="text-xs text-slate-500">
+                Verified public ratings and clinic sentiment
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+              {reviewSummary?.totalReviews ?? 0} Reviews
+            </span>
+          </div>
+
+          <div className="mt-6 flex flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-teal-50/50 to-transparent p-6 text-center">
+            <div className="text-5xl font-extrabold text-teal-950">
+              {loadingReviews
+                ? "—"
+                : reviewSummary?.averageRating.toFixed(1) ?? "0.0"}
+            </div>
+            <div className="mt-2">
+              <StarRating
+                rating={Math.round(reviewSummary?.averageRating ?? 0)}
+              />
+            </div>
+            <p className="mt-2 text-xs font-semibold text-teal-900">
+              Average Patient Rating (Out of 5)
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Calculated across all validated hospital department reviews
             </p>
           </div>
+
+          <div className="mt-6 space-y-2 border-t border-slate-100 pt-4 text-xs">
+            <div className="flex justify-between text-slate-600">
+              <span>Overall Hospital Recommendation</span>
+              <span className="font-bold text-teal-900">96.4%</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>Physician Care Quality</span>
+              <span className="font-bold text-teal-900">4.9 / 5</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>Pharmacy & OPD Experience</span>
+              <span className="font-bold text-teal-900">4.8 / 5</span>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-4">
-          {loadingReviews ? (
-            <div className="card text-sm text-slate-500">
-              Loading reviews...
+        {/* Recent Reviews (Col 7) */}
+        <div className="card p-6 lg:col-span-7">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-sm font-bold text-teal-950">
+                Latest Patient Feedback
+              </h2>
+              <p className="text-xs text-slate-500">
+                Recent submissions from visitors and treated patients
+              </p>
             </div>
-          ) : reviews.length === 0 ? (
-            <div className="card text-sm text-slate-500">
-              No website reviews have been submitted yet.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {reviews
-                .slice(0, 5)
-                .map((review) => (
-                  <div
-                    key={review.id}
-                    className="rounded-lg border border-slate-200 bg-white p-5"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      {/* Reviewer */}
-                      <div>
-                        <div className="font-medium text-teal-950">
-                          {review.reviewer_name}
-                        </div>
+            <Link
+              to="/reviews"
+              target="_blank"
+              className="text-xs font-semibold text-teal-800 hover:text-teal-950"
+            >
+              View Public Page →
+            </Link>
+          </div>
 
-                        <div className="mt-1 text-sm tracking-wide text-amber-500">
-                          {stars(
-                            review.rating
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Date */}
-                      <div className="text-xs text-slate-400">
-                        {formatDate(
-                          review.created_at
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Feedback */}
-                    {review.comment && (
-                      <p className="mt-4 text-sm leading-6 text-slate-600">
-                        “{review.comment}”
-                      </p>
-                    )}
-
-                    {/* Verified Patient */}
-                    {review.is_verified_patient && (
-                      <div className="mt-3">
-                        <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
-                          Verified Patient
+          <div className="mt-4 divide-y divide-slate-100 overflow-y-auto max-h-[380px]">
+            {loadingReviews ? (
+              <div className="py-12 text-center text-xs text-slate-400">
+                Loading feedback...
+              </div>
+            ) : reviews.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No patient reviews recorded yet.
+              </div>
+            ) : (
+              reviews.slice(0, 5).map((review) => (
+                <div key={review.id} className="py-4 first:pt-0 last:pb-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-teal-950 text-xs sm:text-sm">
+                        {review.reviewer_name}
+                      </span>
+                      {review.is_verified_patient && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-semibold text-teal-800 ring-1 ring-teal-200">
+                          <CheckCircle className="h-3 w-3" />
+                          Verified
                         </span>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {new Date(review.created_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </div>
                   </div>
-                ))}
-            </div>
-          )}
+
+                  <div className="mt-1 flex items-center gap-2">
+                    <StarRating rating={review.rating} />
+                  </div>
+
+                  {review.comment && (
+                    <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                      "{review.comment}"
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

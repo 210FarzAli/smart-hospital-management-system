@@ -1,6 +1,19 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { departmentsApi, doctorsApi } from "../../lib/apiClient";
 import type { Department, Doctor } from "../../lib/types";
+import {
+  Stethoscope,
+  Plus,
+  Search,
+  Edit,
+  User,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  DollarSign,
+  ShieldCheck,
+  X,
+} from "../../components/icons/Icons";
 
 const emptyForm = {
   full_name: "",
@@ -17,46 +30,26 @@ type DoctorFilter = "all" | "active" | "inactive";
 export default function AdminDoctors() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-
-  const [filter, setFilter] =
-    useState<DoctorFilter>("all");
-
+  const [filter, setFilter] = useState<DoctorFilter>("all");
   const [search, setSearch] = useState("");
-
   const [showForm, setShowForm] = useState(false);
-  const [editingDoctor, setEditingDoctor] =
-    useState<Doctor | null>(null);
-
+  const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [form, setForm] = useState(emptyForm);
-
   const [saving, setSaving] = useState(false);
-  const [actionLoading, setActionLoading] =
-    useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [loadingDoctors, setLoadingDoctors] =
-    useState(true);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  // ============================================================
-  // LOAD ALL DOCTORS
-  // ============================================================
   async function loadDoctors() {
     try {
       setLoadingDoctors(true);
       setError(null);
-
       const data = await doctorsApi.adminList();
-
       setDoctors(data);
     } catch (err) {
       console.error(err);
-
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load doctors."
+        err instanceof Error ? err.message : "Failed to load doctors list."
       );
     } finally {
       setLoadingDoctors(false);
@@ -65,73 +58,37 @@ export default function AdminDoctors() {
 
   useEffect(() => {
     loadDoctors();
-
     departmentsApi
       .list()
       .then(setDepartments)
-      .catch((err) => {
-        console.error(err);
-      });
+      .catch(console.error);
   }, []);
 
-  // ============================================================
-  // FILTER DOCTORS
-  // ============================================================
   const filteredDoctors = useMemo(() => {
     let result = [...doctors];
 
     if (filter === "active") {
-      result = result.filter(
-        (doctor) =>
-          doctor.status === "active"
-      );
+      result = result.filter((d) => d.status === "active");
+    } else if (filter === "inactive") {
+      result = result.filter((d) => d.status === "inactive");
     }
 
-    if (filter === "inactive") {
+    const q = search.trim().toLowerCase();
+    if (q) {
       result = result.filter(
-        (doctor) =>
-          doctor.status === "inactive"
+        (d) =>
+          d.full_name?.toLowerCase().includes(q) ||
+          d.specialization?.toLowerCase().includes(q) ||
+          d.department_name?.toLowerCase().includes(q)
       );
-    }
-
-    const searchValue =
-      search.trim().toLowerCase();
-
-    if (searchValue) {
-      result = result.filter((doctor) => {
-        return (
-          doctor.full_name
-            ?.toLowerCase()
-            .includes(searchValue) ||
-          doctor.specialization
-            ?.toLowerCase()
-            .includes(searchValue) ||
-          doctor.department_name
-            ?.toLowerCase()
-            .includes(searchValue)
-        );
-      });
     }
 
     return result;
   }, [doctors, filter, search]);
 
-  // ============================================================
-  // COUNTS
-  // ============================================================
-  const activeCount = doctors.filter(
-    (doctor) =>
-      doctor.status === "active"
-  ).length;
+  const activeCount = doctors.filter((d) => d.status === "active").length;
+  const inactiveCount = doctors.filter((d) => d.status === "inactive").length;
 
-  const inactiveCount = doctors.filter(
-    (doctor) =>
-      doctor.status === "inactive"
-  ).length;
-
-  // ============================================================
-  // FORM
-  // ============================================================
   function resetForm() {
     setForm(emptyForm);
     setEditingDoctor(null);
@@ -144,702 +101,490 @@ export default function AdminDoctors() {
     setForm(emptyForm);
     setError(null);
     setShowForm(true);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
   }
 
-  function openEditForm(
-    doctor: Doctor
-  ) {
+  function openEditForm(doctor: Doctor) {
     setEditingDoctor(doctor);
-
     setForm({
-      full_name:
-        doctor.full_name || "",
-      department_id:
-        doctor.department_id || "",
-      specialization:
-        doctor.specialization || "",
-      qualification:
-        doctor.qualification || "",
-      experience_years:
-        doctor.experience_years || 0,
-      consultation_fee:
-        doctor.consultation_fee || 0,
-      description:
-        doctor.description || "",
+      full_name: doctor.full_name || "",
+      department_id: doctor.department_id || "",
+      specialization: doctor.specialization || "",
+      qualification: doctor.qualification || "",
+      experience_years: doctor.experience_years || 0,
+      consultation_fee: doctor.consultation_fee || 0,
+      description: doctor.description || "",
     });
-
     setError(null);
     setShowForm(true);
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
   }
 
-  // ============================================================
-  // ADD / EDIT DOCTOR
-  // ============================================================
-  async function handleSubmit(
-    e: FormEvent
-  ) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-
     setSaving(true);
     setError(null);
 
     try {
       if (editingDoctor) {
-        await doctorsApi.update(
-          editingDoctor.id,
-          form
-        );
+        await doctorsApi.update(editingDoctor.id, form);
       } else {
         await doctorsApi.create(form);
       }
-
       await loadDoctors();
       resetForm();
     } catch (err) {
       console.error(err);
-
       setError(
         err instanceof Error
           ? err.message
           : editingDoctor
-            ? "Failed to update doctor."
-            : "Failed to add doctor."
+          ? "Failed to update doctor."
+          : "Failed to create doctor profile."
       );
     } finally {
       setSaving(false);
     }
   }
 
-  // ============================================================
-  // DELETE / ACTIVATE
-  //
-  // DELETE DOES NOT PHYSICALLY DELETE.
-  // It changes status to inactive.
-  // ============================================================
-  async function handleStatusChange(
-    doctor: Doctor
-  ) {
-    const isActive =
-      doctor.status === "active";
-
+  async function handleStatusChange(doctor: Doctor) {
+    const isActive = doctor.status === "active";
     const confirmed = window.confirm(
       isActive
-        ? `Delete ${doctor.full_name}?\n\nThis will deactivate the doctor. The doctor will NOT be permanently deleted and can be activated again later.`
-        : `Activate ${doctor.full_name} again?`
+        ? `Deactivate ${doctor.full_name}?\n\nThis doctor will be hidden from public OPD booking, but past records remain safe.`
+        : `Re-activate ${doctor.full_name}?`
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setActionLoading(doctor.id);
     setError(null);
 
     try {
-      await doctorsApi.update(
-        doctor.id,
-        {
-          status: isActive
-            ? "inactive"
-            : "active",
-        }
-      );
-
+      await doctorsApi.update(doctor.id, {
+        status: isActive ? "inactive" : "active",
+      });
       await loadDoctors();
     } catch (err) {
       console.error(err);
-
       setError(
-        err instanceof Error
-          ? err.message
-          : isActive
-            ? "Failed to deactivate doctor."
-            : "Failed to activate doctor."
+        err instanceof Error ? err.message : "Failed to change doctor status."
       );
     } finally {
       setActionLoading(null);
     }
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
-    <div>
-      {/* ========================================================
-          HEADER
-      ======================================================== */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-semibold text-teal-950">
-            Doctors ({doctors.length})
+          <div className="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 ring-1 ring-teal-200">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Medical Staff Registry
+          </div>
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-teal-950 sm:text-3xl">
+            Doctors Directory ({doctors.length})
           </h1>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Manage hospital doctors and their profiles.
+          <p className="text-xs text-slate-500">
+            Configure physician profiles, departmental credentials, consultation fees, and active status.
           </p>
         </div>
 
         <button
-          className="btn-primary"
-          onClick={() => {
-            if (showForm) {
-              resetForm();
-            } else {
-              openAddForm();
-            }
-          }}
+          type="button"
+          onClick={openAddForm}
+          className="btn-primary inline-flex items-center gap-2 text-xs shadow-md shadow-teal-900/10"
         >
-          {showForm
-            ? "Cancel"
-            : "Add Doctor"}
+          <Plus className="h-4 w-4" />
+          Add New Physician
         </button>
       </div>
 
-      {/* ========================================================
-          SUMMARY
-      ======================================================== */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Summary KPI Pills */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <button
           type="button"
-          onClick={() =>
-            setFilter("all")
-          }
-          className={`rounded-lg border bg-white p-4 text-left transition ${
+          onClick={() => setFilter("all")}
+          className={`card flex items-center justify-between p-4 text-left transition-all ${
             filter === "all"
-              ? "border-teal-400 ring-2 ring-teal-100"
-              : "border-slate-200 hover:border-teal-200"
+              ? "ring-2 ring-teal-600 bg-teal-50/40"
+              : "hover:bg-slate-50/60"
           }`}
         >
-          <div className="text-sm text-slate-500">
-            All Doctors
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase">
+              Total Physicians
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-teal-950">
+              {doctors.length}
+            </div>
           </div>
-
-          <div className="mt-1 text-2xl font-semibold text-teal-950">
-            {doctors.length}
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100/60 text-teal-800">
+            <Stethoscope className="h-5 w-5" />
           </div>
         </button>
 
         <button
           type="button"
-          onClick={() =>
-            setFilter("active")
-          }
-          className={`rounded-lg border bg-white p-4 text-left transition ${
+          onClick={() => setFilter("active")}
+          className={`card flex items-center justify-between p-4 text-left transition-all ${
             filter === "active"
-              ? "border-teal-400 ring-2 ring-teal-100"
-              : "border-slate-200 hover:border-teal-200"
+              ? "ring-2 ring-emerald-600 bg-emerald-50/40"
+              : "hover:bg-slate-50/60"
           }`}
         >
-          <div className="text-sm text-slate-500">
-            Active Doctors
+          <div>
+            <div className="text-xs font-bold text-emerald-800 uppercase">
+              Active / On Duty
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-emerald-700">
+              {activeCount}
+            </div>
           </div>
-
-          <div className="mt-1 text-2xl font-semibold text-teal-700">
-            {activeCount}
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100/60 text-emerald-800">
+            <CheckCircle className="h-5 w-5" />
           </div>
         </button>
 
         <button
           type="button"
-          onClick={() =>
-            setFilter("inactive")
-          }
-          className={`rounded-lg border bg-white p-4 text-left transition ${
+          onClick={() => setFilter("inactive")}
+          className={`card flex items-center justify-between p-4 text-left transition-all ${
             filter === "inactive"
-              ? "border-slate-400 ring-2 ring-slate-100"
-              : "border-slate-200 hover:border-slate-300"
+              ? "ring-2 ring-slate-400 bg-slate-100"
+              : "hover:bg-slate-50/60"
           }`}
         >
-          <div className="text-sm text-slate-500">
-            Deactivated Doctors
+          <div>
+            <div className="text-xs font-bold text-slate-500 uppercase">
+              Deactivated
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-slate-600">
+              {inactiveCount}
+            </div>
           </div>
-
-          <div className="mt-1 text-2xl font-semibold text-slate-600">
-            {inactiveCount}
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
+            <User className="h-5 w-5" />
           </div>
         </button>
       </div>
 
-      {/* ========================================================
-          FILTER + SEARCH
-      ======================================================== */}
-      <div className="mt-6 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="text-sm font-medium text-slate-700">
-            Show
-          </label>
-
-          <select
-            value={filter}
-            onChange={(e) =>
-              setFilter(
-                e.target.value as DoctorFilter
-              )
-            }
-            className="input-field"
-          >
-            <option value="all">
-              All Doctors
-            </option>
-
-            <option value="active">
-              Active Doctors
-            </option>
-
-            <option value="inactive">
-              Deactivated Doctors
-            </option>
-          </select>
-        </div>
-
-        <div className="w-full md:max-w-sm">
+      {/* Search & Filter Toolbar */}
+      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            className="input-field w-full"
-            placeholder="Search doctor, specialty or department..."
             value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search physician by name, specialty, or department..."
+            className="input-field pl-9 text-xs"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-slate-500">Filter:</label>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as DoctorFilter)}
+            className="input-field py-1.5 text-xs w-auto"
+          >
+            <option value="all">All Doctors ({doctors.length})</option>
+            <option value="active">Active Only ({activeCount})</option>
+            <option value="inactive">Deactivated Only ({inactiveCount})</option>
+          </select>
         </div>
       </div>
 
-      {/* ========================================================
-          ERROR
-      ======================================================== */}
-      {error && !showForm && (
-        <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+      {/* Error alert */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl bg-rose-50 p-4 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* ========================================================
-          ADD / EDIT FORM
-      ======================================================== */}
+      {/* Add / Edit Form Modal / Slide-in */}
       {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="card mt-4"
-        >
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-teal-950">
-              {editingDoctor
-                ? "Edit Doctor"
-                : "Add New Doctor"}
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              {editingDoctor
-                ? "Update the doctor's information below."
-                : "Enter the doctor's information below."}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {/* Full Name */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Full Name
-              </label>
-
-              <input
-                className="input-field w-full"
-                placeholder="e.g. Dr. Farhan Baig"
-                required
-                value={form.full_name}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    full_name:
-                      e.target.value,
-                  })
-                }
-              />
-            </div>
-
-            {/* Department */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Department
-              </label>
-
-              <select
-                className="input-field w-full"
-                required
-                value={
-                  form.department_id
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    department_id:
-                      e.target.value,
-                  })
-                }
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
+          <div className="card max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-bold text-teal-950">
+                  {editingDoctor ? "Edit Physician Profile" : "Register New Physician"}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Fill in credentials and OPD consultation details.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
-                <option value="">
-                  Select Department
-                </option>
-
-                {departments.map(
-                  (department) => (
-                    <option
-                      key={
-                        department.id
-                      }
-                      value={
-                        department.id
-                      }
-                    >
-                      {
-                        department.name
-                      }
-                    </option>
-                  )
-                )}
-              </select>
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
-            {/* Specialization */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Specialization
-              </label>
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.full_name}
+                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                    placeholder="e.g. Dr. Ayesha Siddiqa"
+                    className="input-field mt-1.5 text-xs"
+                  />
+                </div>
 
-              <input
-                className="input-field w-full"
-                placeholder="e.g. Pediatrics Specialist"
-                required
-                value={
-                  form.specialization
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    specialization:
-                      e.target.value,
-                  })
-                }
-              />
-            </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Department <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={form.department_id}
+                    onChange={(e) => setForm({ ...form, department_id: e.target.value })}
+                    className="input-field mt-1.5 text-xs"
+                  >
+                    <option value="">Select Clinical Department</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            {/* Qualification */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Qualification
-              </label>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Specialization <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.specialization}
+                    onChange={(e) => setForm({ ...form, specialization: e.target.value })}
+                    placeholder="e.g. Interventional Cardiology"
+                    className="input-field mt-1.5 text-xs"
+                  />
+                </div>
 
-              <input
-                className="input-field w-full"
-                placeholder="e.g. MBBS, FCPS"
-                value={
-                  form.qualification
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    qualification:
-                      e.target.value,
-                  })
-                }
-              />
-            </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Qualifications
+                  </label>
+                  <input
+                    type="text"
+                    value={form.qualification}
+                    onChange={(e) => setForm({ ...form, qualification: e.target.value })}
+                    placeholder="e.g. MBBS, FCPS (Cardiology)"
+                    className="input-field mt-1.5 text-xs"
+                  />
+                </div>
 
-            {/* Experience */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Experience (Years)
-              </label>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Experience (Years)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={form.experience_years}
+                    onChange={(e) =>
+                      setForm({ ...form, experience_years: Number(e.target.value) })
+                    }
+                    className="input-field mt-1.5 text-xs"
+                  />
+                </div>
 
-              <input
-                type="number"
-                min="0"
-                className="input-field w-full"
-                placeholder="e.g. 10"
-                value={
-                  form.experience_years
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    experience_years:
-                      Number(
-                        e.target.value
-                      ),
-                  })
-                }
-              />
-            </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                    Consultation Fee (PKR) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    required
+                    value={form.consultation_fee}
+                    onChange={(e) =>
+                      setForm({ ...form, consultation_fee: Number(e.target.value) })
+                    }
+                    placeholder="e.g. 2500"
+                    className="input-field mt-1.5 text-xs"
+                  />
+                </div>
+              </div>
 
-            {/* Consultation Fee */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Consultation Fee
-              </label>
+              <div>
+                <label className="block text-xs font-bold tracking-wider text-slate-700 uppercase">
+                  Professional Biography / Description
+                </label>
+                <textarea
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Clinical interests, fellowships, and consultation approach..."
+                  className="input-field mt-1.5 text-xs"
+                />
+              </div>
 
-              <input
-                type="number"
-                min="0"
-                className="input-field w-full"
-                placeholder="e.g. 2500"
-                value={
-                  form.consultation_fee
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    consultation_fee:
-                      Number(
-                        e.target.value
-                      ),
-                  })
-                }
-              />
-            </div>
-
-            {/* Description */}
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Description
-              </label>
-
-              <textarea
-                className="input-field w-full"
-                rows={4}
-                placeholder="Enter doctor's professional description..."
-                value={
-                  form.description
-                }
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    description:
-                      e.target.value,
-                  })
-                }
-              />
-            </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="btn-outline text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="btn-primary text-xs"
+                >
+                  {saving
+                    ? "Saving Profile..."
+                    : editingDoctor
+                    ? "Update Doctor"
+                    : "Create Doctor Profile"}
+                </button>
+              </div>
+            </form>
           </div>
-
-          {error && (
-            <div className="mt-5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <div className="mt-6 flex gap-3">
-            <button
-              type="submit"
-              className="btn-primary flex-1"
-              disabled={saving}
-            >
-              {saving
-                ? "Saving..."
-                : editingDoctor
-                  ? "Update Doctor"
-                  : "Save Doctor"}
-            </button>
-
-            <button
-              type="button"
-              onClick={resetForm}
-              disabled={saving}
-              className="rounded-md border border-slate-300 px-6 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        </div>
       )}
 
-      {/* ========================================================
-          DOCTORS TABLE
-      ======================================================== */}
-      <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
-        {loadingDoctors ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            Loading doctors...
-          </div>
-        ) : filteredDoctors.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-sm font-medium text-slate-700">
-              No doctors found
-            </div>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Try changing the filter or search.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
+      {/* Doctors Data Table */}
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 font-bold uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-5 py-3.5">Doctor & Specialty</th>
+                <th className="px-5 py-3.5">Department</th>
+                <th className="px-5 py-3.5">Experience</th>
+                <th className="px-5 py-3.5">OPD Fee</th>
+                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loadingDoctors ? (
                 <tr>
-                  <th className="px-4 py-3">
-                    Name
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Department
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Specialization
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Fee
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Rating
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Status
-                  </th>
-
-                  <th className="px-4 py-3 text-right">
-                    Actions
-                  </th>
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                    <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-700 border-t-transparent" />
+                    <p className="mt-2">Loading physicians directory...</p>
+                  </td>
                 </tr>
-              </thead>
+              ) : filteredDoctors.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-500">
+                    No physicians found matching the search criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredDoctors.map((doc) => {
+                  const isActive = doc.status === "active";
+                  return (
+                    <tr
+                      key={doc.id}
+                      className="transition-colors hover:bg-slate-50/80"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-100 font-bold text-teal-900">
+                            {doc.full_name
+                              ? doc.full_name
+                                  .replace(/^Dr\.\s*/i, "")
+                                  .slice(0, 2)
+                                  .toUpperCase()
+                              : "DR"}
+                          </div>
+                          <div>
+                            <div className="font-bold text-teal-950">
+                              {doc.full_name}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {doc.qualification || doc.specialization}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
 
-              <tbody>
-                {filteredDoctors.map(
-                  (doctor) => {
-                    const isActive =
-                      doctor.status ===
-                      "active";
+                      <td className="px-5 py-4">
+                        <span className="inline-block rounded-md bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                          {doc.department_name || "General"}
+                        </span>
+                      </td>
 
-                    const loading =
-                      actionLoading ===
-                      doctor.id;
+                      <td className="px-5 py-4 text-slate-600">
+                        {doc.experience_years ? `${doc.experience_years} years` : "—"}
+                      </td>
 
-                    return (
-                      <tr
-                        key={
-                          doctor.id
-                        }
-                        className={`border-t border-slate-100 ${
-                          !isActive
-                            ? "bg-slate-50/70"
-                            : ""
-                        }`}
-                      >
-                        {/* Name */}
-                        <td className="px-4 py-3 font-medium text-slate-900">
-                          {
-                            doctor.full_name
-                          }
-                        </td>
+                      <td className="px-5 py-4 font-semibold text-teal-950">
+                        Rs. {Number(doc.consultation_fee || 0).toLocaleString()}
+                      </td>
 
-                        {/* Department */}
-                        <td className="px-4 py-3 text-slate-700">
-                          {
-                            doctor.department_name
-                          }
-                        </td>
-
-                        {/* Specialization */}
-                        <td className="px-4 py-3 text-slate-700">
-                          {
-                            doctor.specialization
-                          }
-                        </td>
-
-                        {/* Fee */}
-                        <td className="px-4 py-3 text-slate-700">
-                          Rs.{" "}
-                          {
-                            doctor.consultation_fee
-                          }
-                        </td>
-
-                        {/* Rating */}
-                        <td className="px-4 py-3 text-slate-700">
-                          {doctor.rating}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-4 py-3">
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                            isActive
+                              ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                          }`}
+                        >
                           <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isActive ? "bg-emerald-500" : "bg-slate-400"
+                            }`}
+                          />
+                          {isActive ? "Active" : "Deactivated"}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditForm(doc)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs hover:border-teal-300 hover:text-teal-950"
+                          >
+                            <Edit className="h-3 w-3" />
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(doc)}
+                            disabled={actionLoading === doc.id}
+                            className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
                               isActive
-                                ? "bg-teal-50 text-teal-700"
-                                : "bg-slate-200 text-slate-600"
+                                ? "text-rose-600 hover:bg-rose-50"
+                                : "text-emerald-700 hover:bg-emerald-50"
                             }`}
                           >
-                            {isActive
-                              ? "Active"
-                              : "Deactivated"}
-                          </span>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
-                            {/* Edit */}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openEditForm(
-                                  doctor
-                                )
-                              }
-                              disabled={
-                                loading
-                              }
-                              className="rounded-md border border-teal-200 px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 disabled:opacity-50"
-                            >
-                              Edit
-                            </button>
-
-                            {/* Delete / Activate */}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleStatusChange(
-                                  doctor
-                                )
-                              }
-                              disabled={
-                                loading
-                              }
-                              className={`rounded-md border px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
-                                isActive
-                                  ? "border-red-200 text-red-700 hover:bg-red-50"
-                                  : "border-teal-200 text-teal-700 hover:bg-teal-50"
-                              }`}
-                            >
-                              {loading
-                                ? "..."
-                                : isActive
-                                  ? "Delete"
-                                  : "Activate"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                            {actionLoading === doc.id
+                              ? "Updating..."
+                              : isActive
+                              ? "Deactivate"
+                              : "Activate"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

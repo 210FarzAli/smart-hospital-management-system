@@ -190,53 +190,94 @@ router.post("/", verifyToken, requireRole("doctor"), async (req, res) => {
     */
 
     for (const medicine of medicines.filter(
-      (m) => m.medicine_name?.trim()
-    )) {
+  (m) => m.medicine_name?.trim()
+)) {
+  let medicineId = medicine.medicine_id || null;
+
+  // If a pharmacy medicine ID was supplied,
+  // verify that the medicine actually exists.
+  if (medicineId) {
+    const medicineResult =
       await new sql.Request(transaction)
         .input(
-          "prescription_id",
+          "medicine_id",
           sql.UniqueIdentifier,
-          prescription.id
-        )
-        .input(
-          "medicine_name",
-          sql.NVarChar,
-          medicine.medicine_name.trim()
-        )
-        .input(
-          "quantity",
-          sql.NVarChar,
-          medicine.quantity || null
-        )
-        .input(
-          "dosage",
-          sql.NVarChar,
-          medicine.dosage || null
-        )
-        .input(
-          "duration",
-          sql.NVarChar,
-          medicine.duration || null
+          medicineId
         )
         .query(`
-          INSERT INTO prescription_details
-          (
-            prescription_id,
-            medicine_name,
-            quantity,
-            dosage,
-            duration
-          )
-          VALUES
-          (
-            @prescription_id,
-            @medicine_name,
-            @quantity,
-            @dosage,
-            @duration
-          )
+          SELECT id, name, status
+          FROM medicines
+          WHERE id = @medicine_id
         `);
+
+    const pharmacyMedicine =
+      medicineResult.recordset[0];
+
+    if (!pharmacyMedicine) {
+      throw new Error(
+        "Selected pharmacy medicine was not found."
+      );
     }
+
+    if (pharmacyMedicine.status === "inactive") {
+      throw new Error(
+        `${pharmacyMedicine.name} is inactive and cannot be prescribed.`
+      );
+    }
+  }
+
+  await new sql.Request(transaction)
+    .input(
+      "prescription_id",
+      sql.UniqueIdentifier,
+      prescription.id
+    )
+    .input(
+      "medicine_id",
+      sql.UniqueIdentifier,
+      medicineId
+    )
+    .input(
+      "medicine_name",
+      sql.NVarChar,
+      medicine.medicine_name.trim()
+    )
+    .input(
+      "quantity",
+      sql.NVarChar,
+      medicine.quantity || null
+    )
+    .input(
+      "dosage",
+      sql.NVarChar,
+      medicine.dosage || null
+    )
+    .input(
+      "duration",
+      sql.NVarChar,
+      medicine.duration || null
+    )
+    .query(`
+      INSERT INTO prescription_details
+      (
+        prescription_id,
+        medicine_id,
+        medicine_name,
+        quantity,
+        dosage,
+        duration
+      )
+      VALUES
+      (
+        @prescription_id,
+        @medicine_id,
+        @medicine_name,
+        @quantity,
+        @dosage,
+        @duration
+      )
+    `);
+}
 
     /*
     ------------------------------------------------------------

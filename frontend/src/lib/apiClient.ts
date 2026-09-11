@@ -362,6 +362,7 @@ export const appointmentsApi = {
 // Prescriptions
 // ---------------------------------------------------------------------------
 export interface MedicineLine {
+  medicine_id: string;
   medicine_name: string;
   quantity: string;
   dosage: string;
@@ -411,8 +412,8 @@ export interface ReviewSummary {
 }
 
 export const reviewsApi = {
-  list: () =>
-    request<HospitalReview[]>("/reviews"),
+  list: (doctorId?: string) =>
+    request<HospitalReview[]>(`/reviews${doctorId ? `?doctorId=${encodeURIComponent(doctorId)}` : ""}`),
 
   create: (data: {
     reviewer_name: string;
@@ -456,6 +457,36 @@ export interface PharmacyMedicine {
   reorder_level: number;
   in_stock: number;
   status: "active" | "inactive";
+}
+
+export interface PrescriptionPatientMedicine {
+  prescription_detail_id: string;
+
+  medicine_name: string;
+  prescribed_quantity: string;
+  dosage: string | null;
+  duration: string | null;
+
+  medicine_id: string | null;
+  inventory_medicine_name: string | null;
+  unit_price: number | null;
+}
+
+export interface PrescriptionPatient {
+  id: string;
+  patient_code: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+
+  prescription_id: string;
+  prescription_date: string;
+
+  doctor_id: string;
+  doctor_name: string;
+  doctor_specialization: string;
+
+  medicines: PrescriptionPatientMedicine[];
 }
 
 export interface PharmacySaleItem {
@@ -522,6 +553,8 @@ export interface PharmacySale {
   customer_phone: string | null;
   customer_email: string | null;
 
+  referring_doctor: string | null;
+
   sold_by: string | null;
 
   receipt_code: string | null;
@@ -534,6 +567,11 @@ export const pharmacyApi = {
     request<PharmacyMedicine[]>(
       "/pharmacy/medicines"
     ),
+
+  prescriptionPatients: () =>
+    request<PrescriptionPatient[]>(
+      "/pharmacy/prescription-patients"
+    ),  
 
   createMedicine: (data: {
     name: string;
@@ -568,6 +606,7 @@ export const pharmacyApi = {
       category?: string | null;
       unit_price?: number;
       reorder_level?: number;
+      status?: "active" | "inactive";
     }
   ) =>
     request<PharmacyMedicine>(

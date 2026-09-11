@@ -23,7 +23,7 @@ function shortCode(prefix) {
 router.get(
   "/medicines",
   verifyToken,
-  requireRole("admin", "pharmacist"),
+  requireRole("admin", "pharmacist", "doctor"),
   async (req, res) => {
     try {
       const pool = await getPool();
@@ -470,6 +470,189 @@ router.get(
   }
 );
 
+// ============================================================
+// GET /api/pharmacy/prescription-patients
+//
+// Admin / Pharmacist
+//
+// Returns active hospital patients who have a doctor-issued
+// prescription, regardless of which doctor issued it.
+//
+// Also returns the medicines from the patient's latest
+// prescription so the pharmacy POS can auto-fill them.
+// ============================================================
+
+router.get(
+  "/prescription-patients",
+  verifyToken,
+  requireRole("admin", "pharmacist"),
+  async (req, res) => {
+    try {
+      const pool = await getPool();
+
+      const result = await pool.request().query(`
+        WITH LatestPrescriptions AS (
+          SELECT
+            pr.id AS prescription_id,
+            pr.patient_id,
+            pr.doctor_id,
+            pr.created_at AS prescription_date,
+
+            ROW_NUMBER() OVER (
+              PARTITION BY pr.patient_id
+              ORDER BY pr.created_at DESC
+            ) AS rn
+
+          FROM prescriptions pr
+        )
+
+        SELECT
+          p.id,
+          p.patient_code,
+          p.full_name,
+          p.phone,
+          p.email,
+
+          lp.prescription_id,
+          lp.prescription_date,
+
+          d.id AS doctor_id,
+          d.full_name AS doctor_name,
+          d.specialization AS doctor_specialization,
+
+          pd.id AS prescription_detail_id,
+          pd.medicine_name,
+          pd.quantity AS prescribed_quantity,
+          pd.dosage,
+          pd.duration,
+
+          m.id AS medicine_id,
+          m.name AS inventory_medicine_name,
+          m.unit_price
+
+        FROM LatestPrescriptions lp
+
+        INNER JOIN patients p
+          ON p.id = lp.patient_id
+
+        INNER JOIN doctors d
+          ON d.id = lp.doctor_id
+
+        LEFT JOIN prescription_details pd
+          ON pd.prescription_id = lp.prescription_id
+
+        LEFT JOIN medicines m
+  ON REPLACE(
+       REPLACE(
+         REPLACE(
+           REPLACE(
+             LOWER(LTRIM(RTRIM(m.name))),
+             ' ',
+             ''
+           ),
+           '-',
+           ''
+         ),
+         '_',
+         ''
+       ),
+       '.',
+       ''
+     )
+     =
+     REPLACE(
+       REPLACE(
+         REPLACE(
+           REPLACE(
+             LOWER(LTRIM(RTRIM(pd.medicine_name))),
+             ' ',
+             ''
+           ),
+           '-',
+           ''
+         ),
+         '_',
+         ''
+       ),
+       '.',
+       ''
+     )
+
+        WHERE lp.rn = 1
+          AND p.status = 'active'
+          AND d.status = 'active'
+
+        ORDER BY
+          p.full_name,
+          pd.id
+      `);
+
+      // Group prescription medicines under each patient.
+      const patients = new Map();
+
+      for (const row of result.recordset) {
+        if (!patients.has(row.id)) {
+          patients.set(row.id, {
+            id: row.id,
+            patient_code: row.patient_code,
+            full_name: row.full_name,
+            phone: row.phone,
+            email: row.email,
+
+            prescription_id: row.prescription_id,
+            prescription_date: row.prescription_date,
+
+            doctor_id: row.doctor_id,
+            doctor_name: row.doctor_name,
+            doctor_specialization:
+              row.doctor_specialization,
+
+            medicines: [],
+          });
+        }
+
+        const patient = patients.get(row.id);
+
+        if (row.prescription_detail_id) {
+          patient.medicines.push({
+            prescription_detail_id:
+              row.prescription_detail_id,
+
+            medicine_name:
+              row.medicine_name,
+
+            prescribed_quantity:
+              row.prescribed_quantity,
+
+            dosage:
+              row.dosage,
+
+            duration:
+              row.duration,
+
+            medicine_id:
+              row.medicine_id,
+
+            inventory_medicine_name:
+              row.inventory_medicine_name,
+
+            unit_price:
+              row.unit_price,
+          });
+        }
+      }
+
+      res.json(Array.from(patients.values()));
+    } catch (err) {
+      console.error(err);
+
+      res.status(500).json({
+        error:
+          "Failed to load prescription patients.",
+      });
+    }
+  }
+);
 
 // ============================================================
 // GET /api/pharmacy/sales
@@ -504,6 +687,8 @@ router.get(
             c.phone AS customer_phone,
             c.email AS customer_email,
 
+            d.full_name AS referring_doctor,
+
             u.full_name AS sold_by,
 
             r.receipt_code,
@@ -514,6 +699,9 @@ router.get(
 
           LEFT JOIN pharmacy_customers c
             ON c.id = s.customer_id
+
+            LEFT JOIN doctors d
+            ON d.id = s.doctor_id
 
           LEFT JOIN staff_users u
             ON u.id = s.sold_by
@@ -572,83 +760,52 @@ router.post(
       new sql.Transaction(pool);
 
     try {
-      await transaction.begin();
+            await transaction.begin();
+
+      // --------------------------------------------------------
+      // Find referring doctor for prescription-based sales.
+      // Walk-in sales do not have a referring doctor.
+      // --------------------------------------------------------
+
+      let doctorId = null;
+
+      if (sale_type === "prescription") {
+        if (!patient_id) {
+          throw new Error(
+            "Patient ID is required for a prescription sale."
+          );
+        }
+
+        const prescriptionResult =
+          await new sql.Request(transaction)
+            .input(
+              "patient_id",
+              sql.UniqueIdentifier,
+              patient_id
+            )
+            .query(`
+              SELECT TOP 1
+                doctor_id
+              FROM prescriptions
+              WHERE patient_id = @patient_id
+              ORDER BY created_at DESC
+            `);
+
+        const prescription =
+          prescriptionResult.recordset[0];
+
+        if (!prescription) {
+          throw new Error(
+            "No hospital prescription was found for this patient."
+          );
+        }
+
+        doctorId = prescription.doctor_id;
+      }
 
       // --------------------------------------------------------
       // Find existing pharmacy customer or create a new one.
       // --------------------------------------------------------
-
-      let customerId = null;
-
-      if (customer?.full_name) {
-        const existing = customer.phone
-          ? await new sql.Request(
-              transaction
-            )
-              .input(
-                "phone",
-                sql.NVarChar,
-                customer.phone
-              )
-              .query(`
-                SELECT *
-                FROM pharmacy_customers
-                WHERE phone = @phone
-              `)
-          : {
-              recordset: [],
-            };
-
-        if (existing.recordset[0]) {
-          customerId =
-            existing.recordset[0].id;
-        } else {
-          const created =
-            await new sql.Request(
-              transaction
-            )
-              .input(
-                "customer_code",
-                sql.NVarChar,
-                shortCode("C")
-              )
-              .input(
-                "full_name",
-                sql.NVarChar,
-                customer.full_name
-              )
-              .input(
-                "phone",
-                sql.NVarChar,
-                customer.phone || null
-              )
-              .input(
-                "email",
-                sql.NVarChar,
-                customer.email || null
-              )
-              .query(`
-                INSERT INTO pharmacy_customers
-                (
-                  customer_code,
-                  full_name,
-                  phone,
-                  email
-                )
-                OUTPUT INSERTED.*
-                VALUES
-                (
-                  @customer_code,
-                  @full_name,
-                  @phone,
-                  @email
-                )
-              `);
-
-          customerId =
-            created.recordset[0].id;
-        }
-      }
 
       // --------------------------------------------------------
       // Calculate sale total.
@@ -685,6 +842,12 @@ router.post(
             sql.UniqueIdentifier,
             patient_id
           )
+
+         .input(
+            "doctor_id",
+            sql.UniqueIdentifier,
+            doctorId
+          )
           .input(
             "sale_type",
             sql.NVarChar,
@@ -706,6 +869,7 @@ router.post(
               sale_code,
               customer_id,
               patient_id,
+              doctor_id,
               sale_type,
               total_amount,
               sold_by
@@ -716,6 +880,7 @@ router.post(
               @sale_code,
               @customer_id,
               @patient_id,
+              @doctor_id,
               @sale_type,
               @total_amount,
               @sold_by
