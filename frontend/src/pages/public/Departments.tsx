@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { departmentsApi } from "../../lib/apiClient";
 import type { Department } from "../../lib/types";
+import { getPatientFriendlyDepartmentName } from "../../lib/departmentUtils";
 import {
   HospitalIcon,
   ActivityIcon,
@@ -107,7 +108,7 @@ export default function Departments() {
                   </div>
 
                   <h3 className="mt-5 text-xl font-bold text-slate-900 group-hover:text-teal-900 transition-colors">
-                    {d.name}
+                    {getPatientFriendlyDepartmentName(d.name)}
                   </h3>
 
                   <p className="mt-2.5 text-xs leading-relaxed text-slate-500 line-clamp-3">

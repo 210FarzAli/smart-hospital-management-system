@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { doctorsApi, reviewsApi } from "../../lib/apiClient";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { doctorsApi } from "../../lib/apiClient";
 import type { Doctor } from "../../lib/types";
-import type { HospitalReview } from "../../lib/apiClient";
 import StarRating from "../../components/StarRating";
+import { getPatientFriendlyDepartmentName } from "../../lib/departmentUtils";
 import {
   ChevronRightIcon,
   ShieldCheckIcon,
   ClockIcon,
   CalendarIcon,
   CheckCircleIcon,
-  StethoscopeIcon,
-  DollarSignIcon,
   UserIcon,
 } from "../../components/icons/Icons";
 
@@ -29,23 +27,44 @@ function formatTime(time: string) {
   });
 }
 
+function formatDateForInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function DoctorProfile() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [doctor, setDoctor] = useState<Doctor | null>(null);
-  const [reviews, setReviews] = useState<HospitalReview[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Selected date and shift state for booking flow
+  const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
 
-    Promise.all([
-      doctorsApi.get(id),
-      reviewsApi.list(id),
-    ])
-      .then(([doc, revs]) => {
+    doctorsApi
+      .get(id)
+      .then((doc) => {
         setDoctor(doc);
-        setReviews(revs || []);
+        // Find first available upcoming date
+        if (doc && doc.availability && doc.availability.length > 0) {
+          const availableDays = new Set(doc.availability.map((a) => a.day.trim().toLowerCase()));
+          const dayNames = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+          const today = new Date();
+          for (let i = 0; i < 30; i++) {
+            const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+            const dayName = dayNames[d.getDay()];
+            if (availableDays.has(dayName)) {
+              setSelectedDate(formatDateForInput(d));
+              break;
+            }
+          }
+        }
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -54,8 +73,8 @@ export default function DoctorProfile() {
   if (loading) {
     return (
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16">
-        <div className="h-64 rounded-3xl bg-slate-100 animate-pulse"></div>
-        <div className="mt-8 h-48 rounded-2xl bg-slate-100 animate-pulse"></div>
+        <div className="h-64 rounded-3xl bg-slate-100 animate-pulse" />
+        <div className="mt-8 h-48 rounded-2xl bg-slate-100 animate-pulse" />
       </div>
     );
   }
@@ -74,11 +93,27 @@ export default function DoctorProfile() {
   }
 
   const initials = doctor.full_name
-    .replace("Dr. ", "")
+    .replace(/^Dr\.\s*/i, "")
     .split(" ")
     .map((p) => p[0])
     .slice(0, 2)
     .join("");
+
+  // Determine active shift for the selected date
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let activeShiftForSelectedDate: { day: string; start_time: string; end_time: string } | null = null;
+  if (selectedDate) {
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dayOfWeek = dayNames[dateObj.getDay()];
+    activeShiftForSelectedDate =
+      doctor.availability?.find((a) => a.day.trim().toLowerCase() === dayOfWeek.toLowerCase()) || null;
+  }
+
+  function handleBookShift(dateToBook: string, startTime: string) {
+    if (!dateToBook || !startTime) return;
+    navigate(`/book?doctorId=${doctor?.id}&date=${dateToBook}&time=${startTime}`);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-20">
@@ -125,7 +160,7 @@ export default function DoctorProfile() {
               <div className="flex flex-wrap items-center gap-2">
                 {doctor.department_name && (
                   <span className="badge-teal">
-                    {doctor.department_name}
+                    {getPatientFriendlyDepartmentName(doctor.department_name)}
                   </span>
                 )}
                 <span className="badge-emerald">
@@ -160,25 +195,37 @@ export default function DoctorProfile() {
               </div>
             </div>
 
-            {/* Fee & Book Quick Action */}
-            <div className="w-full sm:w-56 rounded-2xl border border-teal-100 bg-teal-50/60 p-5 text-center flex flex-col justify-between">
+            {/* Explicit OPD Consultation Fee Card */}
+            <div className="w-full sm:w-64 rounded-2xl border border-teal-100 bg-teal-50/60 p-5 text-center flex flex-col justify-between">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-teal-800">
-                  Consultation Fee
+                  OPD Consultation Fee
                 </span>
                 <div className="mt-1 text-2xl font-extrabold text-teal-950">
-                  Rs. {doctor.consultation_fee.toLocaleString()}
+                  Rs. {Number(doctor.consultation_fee).toLocaleString()}
                 </div>
-                <span className="text-[11px] text-slate-500 block mt-0.5">Per OPD Session</span>
+                <span className="text-[11px] text-slate-500 block mt-1">
+                  Pay Physically at Reception Desk
+                </span>
+                <span className="text-[10px] text-teal-700 font-medium block mt-0.5">
+                  (No online payment taken)
+                </span>
               </div>
 
-              <Link
-                to={`/book?doctorId=${doctor.id}`}
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedDate && activeShiftForSelectedDate) {
+                    handleBookShift(selectedDate, activeShiftForSelectedDate.start_time);
+                  } else {
+                    navigate(`/book?doctorId=${doctor.id}`);
+                  }
+                }}
                 className="btn-primary mt-4 w-full py-2.5 text-xs font-bold"
               >
                 <CalendarIcon className="w-4 h-4" />
-                <span>Book Appointment</span>
-              </Link>
+                <span>Book This Doctor</span>
+              </button>
             </div>
           </div>
 
@@ -195,20 +242,74 @@ export default function DoctorProfile() {
           )}
         </div>
 
-        {/* OPD Working Schedule */}
+        {/* OPD Working Schedule & Shift-Based Booking */}
         <div className="rounded-3xl border border-slate-200 bg-white p-7 sm:p-8 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900">
-                OPD Schedule & Working Shifts
+                OPD Schedule & Bookable Shifts
               </h2>
               <p className="mt-1 text-xs text-slate-500">
-                Patients book the doctor's active working shift rather than an isolated time slot.
+                Select your preferred date and book the doctor's working shift. Your selection will autofill directly on the booking page.
               </p>
             </div>
-            <ClockIcon className="w-6 h-6 text-teal-700" />
+            <div className="flex items-center gap-2 text-teal-800 text-xs font-semibold">
+              <ClockIcon className="w-5 h-5 text-teal-700" />
+              <span>Shift-Based Consultation</span>
+            </div>
           </div>
 
+          {/* Quick Date Selector */}
+          <div className="mt-6 rounded-2xl bg-teal-50/50 p-5 border border-teal-100">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-teal-900">
+                  Select Consultation Date:
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  min={formatDateForInput(new Date())}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="input-field mt-1.5 text-xs font-medium w-full sm:w-60 bg-white"
+                />
+              </div>
+
+              <div className="flex-1 sm:pl-4">
+                {selectedDate && activeShiftForSelectedDate ? (
+                  <div className="rounded-xl bg-white p-3 border border-teal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[11px] font-bold text-teal-800 uppercase tracking-wider block">
+                        Available Shift on {activeShiftForSelectedDate.day}:
+                      </span>
+                      <span className="text-sm font-extrabold text-teal-950">
+                        {formatTime(activeShiftForSelectedDate.start_time)} – {formatTime(activeShiftForSelectedDate.end_time)}
+                      </span>
+                      <span className="text-xs text-slate-500 block">
+                        OPD Fee: Rs. {Number(doctor.consultation_fee).toLocaleString()} (Pay at Reception)
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBookShift(selectedDate, activeShiftForSelectedDate!.start_time)}
+                      className="btn-primary py-2 px-4 text-xs font-bold whitespace-nowrap"
+                    >
+                      Book This Shift →
+                    </button>
+                  </div>
+                ) : selectedDate ? (
+                  <div className="rounded-xl bg-amber-50 p-3 border border-amber-200 text-xs text-amber-800">
+                    Dr. {doctor.full_name} does not hold an active OPD shift on this selected day. Please select one of the registered schedule days below.
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">Pick a date above to check shift timings.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Schedule Table */}
           <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
@@ -220,7 +321,7 @@ export default function DoctorProfile() {
                     Shift Timings
                   </th>
                   <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-600">
-                    OPD Session
+                    OPD Consultation Fee
                   </th>
                   <th className="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-slate-600">
                     Action
@@ -229,27 +330,44 @@ export default function DoctorProfile() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {doctor.availability && doctor.availability.length > 0 ? (
-                  doctor.availability.map((a, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition">
-                      <td className="px-5 py-4 font-bold text-slate-900">
-                        {a.day}
-                      </td>
-                      <td className="px-5 py-4 text-slate-700 font-medium">
-                        {formatTime(a.start_time)} – {formatTime(a.end_time)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="badge-emerald">Active OPD Shift</span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <Link
-                          to={`/book?doctorId=${doctor.id}`}
-                          className="text-xs font-bold text-teal-800 hover:text-teal-600 underline"
-                        >
-                          Book Shift
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                  doctor.availability.map((a, i) => {
+                    // Calculate next date for this day
+                    const dayNamesShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+                    const today = new Date();
+                    let targetDateString = "";
+                    for (let step = 0; step < 14; step++) {
+                      const candidate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + step);
+                      if (dayNamesShort[candidate.getDay()].toLowerCase() === a.day.trim().toLowerCase()) {
+                        targetDateString = formatDateForInput(candidate);
+                        break;
+                      }
+                    }
+
+                    return (
+                      <tr key={i} className="hover:bg-slate-50 transition">
+                        <td className="px-5 py-4 font-bold text-slate-900">
+                          {a.day}
+                        </td>
+                        <td className="px-5 py-4 text-slate-700 font-medium">
+                          {formatTime(a.start_time)} – {formatTime(a.end_time)}
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-teal-950">
+                          Rs. {Number(doctor.consultation_fee).toLocaleString()}{" "}
+                          <span className="text-[11px] font-normal text-slate-500">(Pay at Reception)</span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleBookShift(targetDateString, a.start_time)}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-teal-800 hover:text-teal-600 underline"
+                          >
+                            <span>Book Shift</span>
+                            <ChevronRightIcon className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={4} className="px-5 py-6 text-center text-sm text-slate-500">
@@ -259,53 +377,6 @@ export default function DoctorProfile() {
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* Patient Reviews Section */}
-        <div className="rounded-3xl border border-slate-200 bg-white p-7 sm:p-8 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Patient Reviews ({reviews.length})
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Feedback submitted by patients who consulted with {doctor.full_name}.
-              </p>
-            </div>
-            <StarRating rating={doctor.rating} size="md" />
-          </div>
-
-          <div className="mt-6 space-y-4">
-            {reviews.length === 0 ? (
-              <p className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">
-                No patient reviews recorded yet for this doctor.
-              </p>
-            ) : (
-              reviews.map((r) => (
-                <div
-                  key={r.id}
-                  className="rounded-2xl border border-slate-200 p-5 transition hover:border-teal-200"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900">{r.reviewer_name}</span>
-                      {r.is_verified_patient && (
-                        <span className="badge-emerald">
-                          Verified Patient
-                        </span>
-                      )}
-                    </div>
-                    <StarRating rating={r.rating} size="sm" showNumber={false} />
-                  </div>
-                  {r.comment && (
-                    <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                      “{r.comment}”
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
           </div>
         </div>
       </div>

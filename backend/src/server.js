@@ -11,6 +11,8 @@ const reviewRoutes = require("./routes/reviews");
 const pharmacyRoutes = require("./routes/pharmacy");
 const assistantRoutes = require("./routes/assistant");
 const reportRoutes = require("./routes/reports");
+const laboratoryRoutes = require("./routes/laboratory");
+const { ensureMigrations } = require("./db/migrations");
 
 const app = express();
 
@@ -28,6 +30,7 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/pharmacy", pharmacyRoutes);
 app.use("/api/assistant", assistantRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/laboratory", laboratoryRoutes);
 
 // Fallback error handler.
 app.use((err, req, res, next) => {
@@ -36,6 +39,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Smart Hospital backend running on http://localhost:${PORT}`);
+  await ensureMigrations();
 });

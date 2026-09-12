@@ -79,11 +79,11 @@ export default function AdminDashboard() {
       link: "/admin/appointments",
     },
     {
-      label: "Pending Verification",
-      value: stats?.pendingAppointments ?? "—",
-      subtext: "Awaiting administrative confirmation",
-      icon: Clock,
-      bg: "bg-amber-50 text-amber-800",
+      label: "Confirmed Appointments",
+      value: stats?.totalAppointments ?? "—",
+      subtext: "Directly confirmed OPD tokens",
+      icon: CheckCircle,
+      bg: "bg-teal-50 text-teal-800",
       link: "/admin/appointments",
     },
   ];
@@ -221,7 +221,6 @@ export default function AdminDashboard() {
             </div>
             <Link
               to="/reviews"
-              target="_blank"
               className="text-xs font-semibold text-teal-800 hover:text-teal-950"
             >
               View Public Page →

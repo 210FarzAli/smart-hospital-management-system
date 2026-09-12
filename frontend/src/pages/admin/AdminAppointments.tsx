@@ -129,13 +129,13 @@ export default function AdminAppointments() {
             Hospital Appointments ({rows.length})
           </h1>
           <p className="text-xs text-slate-500">
-            Monitor, confirm, and verify patient bookings across all clinical shifts.
+            Monitor, view, and track patient bookings across all clinical shifts.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-900 ring-1 ring-amber-200/60">
-            <span className="font-bold">{pendingCount}</span> Pending Confirmations
+          <div className="rounded-xl bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-900 ring-1 ring-emerald-200/60">
+            <span className="font-bold">{confirmedCount}</span> Confirmed Appointments
           </div>
         </div>
       </div>
@@ -272,16 +272,19 @@ export default function AdminAppointments() {
                       </td>
 
                       <td className="px-5 py-4 text-right">
-                        {isPending && (
+                        {isConfirmed ? (
                           <button
                             type="button"
                             disabled={actionId === r.id}
-                            onClick={() => updateStatus(r.id, "confirmed")}
-                            className="inline-flex items-center gap-1 rounded-lg bg-teal-800 px-3 py-1 text-xs font-semibold text-white shadow-2xs hover:bg-teal-700 transition-colors disabled:opacity-50"
+                            onClick={() => updateStatus(r.id, "completed")}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
                           >
-                            <CheckCircle className="h-3 w-3" />
-                            {actionId === r.id ? "Confirming..." : "Confirm"}
+                            Mark Completed
                           </button>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] capitalize">
+                            {r.status}
+                          </span>
                         )}
                       </td>
                     </tr>

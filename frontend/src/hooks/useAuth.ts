@@ -29,7 +29,7 @@ export function useAuth(requiredRole?: string) {
         if (isMounted) {
           setState({
             loading: false,
-            staffUser: !requiredRole || user.role === requiredRole ? user : null,
+            staffUser: !requiredRole || user.role === requiredRole || user.role === "admin" ? user : null,
           });
         }
       } catch {

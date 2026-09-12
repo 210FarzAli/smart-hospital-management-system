@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Refresh,
   Filter,
+  Activity,
 } from "../../components/icons/Icons";
 
 function getToday() {
@@ -275,50 +276,59 @@ export default function AdminReports() {
         </div>
       </div>
 
-      {/* Clinical Department Summary Banner */}
+      {/* Laboratory Operational Statistics */}
       <div className="card p-6">
-        <h2 className="text-sm font-bold text-teal-950">
-          Hospital Capacity & Operations Summary
-        </h2>
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-teal-950">
+              Laboratory Diagnostics & Pathology Performance
+            </h2>
+            <p className="text-xs text-slate-500">
+              Diagnostic test throughput, home sample requests, and lab pathology billings
+            </p>
+          </div>
+          <span className="badge-teal text-[11px] font-semibold">
+            Laboratory Analytics
+          </span>
+        </div>
+
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <Stethoscope className="h-4 w-4 text-teal-700" />
-              Physicians On Staff
+              <Activity className="h-4 w-4 text-teal-700" />
+              Total Diagnostic Orders
             </div>
             <div className="mt-1 text-2xl font-bold text-teal-950">
-              {stats?.doctors ?? 0} Specialists
+              {stats?.labBookings ?? 0} Orders
             </div>
             <p className="mt-1 text-[11px] text-slate-400">
-              Across all hospital departments
+              In-clinic and home collection requests
             </p>
           </div>
 
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <Calendar className="h-4 w-4 text-teal-700" />
-              Pending Appointments
+              <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              Tests Processed & Released
             </div>
-            <div className="mt-1 text-2xl font-bold text-amber-600">
-              {stats?.pendingAppointments ?? 0} Tokens
+            <div className="mt-1 text-2xl font-bold text-emerald-700">
+              {stats?.labCompletedTests ?? 0} Tests
             </div>
             <p className="mt-1 text-[11px] text-slate-400">
-              Require administrative approval
+              Pathologist verified diagnostic reports
             </p>
           </div>
 
           <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <TrendingUp className="h-4 w-4 text-teal-700" />
-              Average Ticket Value
+              <DollarSign className="h-4 w-4 text-teal-700" />
+              Laboratory Gross Revenue
             </div>
             <div className="mt-1 text-2xl font-bold text-teal-950">
-              {stats && stats.pharmacySales > 0
-                ? money(Math.round(stats.pharmacyRevenue / stats.pharmacySales))
-                : "Rs. 0"}
+              {money(stats?.labRevenue ?? 0)}
             </div>
             <p className="mt-1 text-[11px] text-slate-400">
-              Per pharmacy transaction
+              Diagnostic test billings collected
             </p>
           </div>
         </div>

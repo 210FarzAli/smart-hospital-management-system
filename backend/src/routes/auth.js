@@ -32,8 +32,8 @@ router.post("/login", async (req, res) => {
     });
   }
 
-  // Only these three polished login portals are currently active.
-  const allowedRoles = ["admin", "doctor", "pharmacist"];
+  // Portal roles
+  const allowedRoles = ["admin", "doctor", "pharmacist", "laboratory", "laboratorist"];
 
   if (!allowedRoles.includes(role)) {
     return res.status(400).json({
@@ -89,7 +89,7 @@ router.post("/login", async (req, res) => {
     // Check that the account belongs to the requested portal
     // ----------------------------------------------------------
 
-    if (staffUser.role !== role) {
+    if (staffUser.role !== role && !(staffUser.role === "admin" && ["pharmacist", "laboratorist"].includes(role))) {
       return res.status(403).json({
         error: `This account does not have ${role} access.`,
       });

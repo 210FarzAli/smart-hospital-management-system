@@ -106,6 +106,95 @@ export type StaffRole =
   | "admin"
   | "doctor"
   | "pharmacist"
+  | "laboratorist"
   | "receptionist"
   | "hr"
   | "accountant";
+
+export interface LabTest {
+  id: string;
+  test_code: string;
+  name: string;
+  category: string;
+  description: string | null;
+  price: number;
+  sample_type: string;
+  normal_range: string | null;
+  unit: string | null;
+  turnaround_hours: number;
+  is_home_collection_available?: boolean;
+  status: "active" | "inactive";
+  created_at?: string;
+}
+
+export interface LabBookingItem {
+  id: string;
+  booking_id?: string;
+  test_id?: string;
+  test_name: string;
+  price: number;
+  result_value?: string | null;
+  result_status: "pending" | "in_progress" | "completed" | "normal" | "abnormal";
+  normal_range?: string | null;
+  unit?: string | null;
+  remarks?: string | null;
+  completed_at?: string | null;
+}
+
+export interface LabBooking {
+  id: string;
+  booking_code: string;
+  tracking_id: string;
+  patient_name: string;
+  patient_phone: string;
+  patient_email: string | null;
+  patient_age: number | null;
+  patient_gender: string | null;
+  service_type: "in_clinic" | "home_service";
+  booking_date: string;
+  booking_time: string | null;
+  home_address: string | null;
+  notes: string | null;
+  status:
+    | "booked"
+    | "sample_collection_pending"
+    | "sample_collected"
+    | "processing"
+    | "result_ready"
+    | "completed"
+    | "cancelled"
+    | "pending"
+    | "confirmed"
+    | "in_progress";
+  total_amount: number;
+  total_tests?: number;
+  completed_tests?: number;
+  items?: LabBookingItem[];
+  created_at: string;
+}
+
+export interface PharmacyOnlineOrderItem {
+  id?: string;
+  order_id?: string;
+  medicine_id: string;
+  medicine_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface PharmacyOnlineOrder {
+  id: string;
+  order_code: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string | null;
+  delivery_address: string;
+  notes: string | null;
+  total_amount: number;
+  status: "pending" | "confirmed" | "ready" | "completed" | "cancelled";
+  items_count?: number;
+  items?: PharmacyOnlineOrderItem[];
+  created_at: string;
+  updated_at: string;
+}

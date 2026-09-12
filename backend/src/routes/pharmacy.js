@@ -13,6 +13,67 @@ function shortCode(prefix) {
 }
 
 // ============================================================
+// GET /api/pharmacy/public-medicines
+//
+// Public pharmacy catalog.
+// No staff authentication is required.
+//
+// Only active medicines with stock greater than zero
+// are returned.
+// ============================================================
+
+router.get(
+  "/public-medicines",
+  async (req, res) => {
+    try {
+      const pool = await getPool();
+
+      const result =
+        await pool.request().query(`
+          SELECT
+            m.id,
+            m.name,
+            m.category,
+            m.unit_price,
+            m.reorder_level,
+            ISNULL(
+              SUM(b.quantity),
+              0
+            ) AS in_stock
+          FROM medicines m
+          LEFT JOIN medicine_batches b
+            ON b.medicine_id = m.id
+          WHERE m.status = 'active'
+          GROUP BY
+            m.id,
+            m.name,
+            m.category,
+            m.unit_price,
+            m.reorder_level
+          HAVING
+            ISNULL(
+              SUM(b.quantity),
+              0
+            ) > 0
+          ORDER BY
+            m.name
+        `);
+
+      res.json(
+        result.recordset
+      );
+    } catch (err) {
+      console.error(err);
+
+      res.status(500).json({
+        error:
+          "Failed to load public pharmacy medicines.",
+      });
+    }
+  }
+);
+
+// ============================================================
 // GET /api/pharmacy/medicines
 //
 // Admin / Pharmacist
@@ -1123,5 +1184,316 @@ router.post(
   }
 );
 
+// ============================================================
+// PUBLIC: GET /api/pharmacy/catalog
+// Browse medicines with stock availability for online pharmacy shop
+// ============================================================
+router.get("/catalog", async (req, res) => {
+  try {
+    const pool = await getPool();
+
+    const result = await pool.request().query(`
+      SELECT
+        m.id,
+        m.name,
+        m.category,
+        m.unit_price,
+        m.reorder_level,
+        ISNULL(SUM(b.quantity), 0) AS in_stock
+      FROM medicines m
+      LEFT JOIN medicine_batches b
+        ON b.medicine_id = m.id
+      WHERE m.status = 'active'
+      GROUP BY
+        m.id,
+        m.name,
+        m.category,
+        m.unit_price,
+        m.reorder_level
+      ORDER BY m.name
+    `);
+
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("Failed to load pharmacy catalog:", err);
+    res.status(500).json({ error: "Failed to load pharmacy catalog." });
+  }
+});
+
+// ============================================================
+// PUBLIC: POST /api/pharmacy/orders
+// Place an online pharmacy customer order (Cash on Delivery)
+// ============================================================
+router.post("/orders", async (req, res) => {
+  const {
+    customer_name,
+    customer_phone,
+    customer_email = null,
+    delivery_address,
+    notes = null,
+    items = [],
+  } = req.body;
+
+  if (!customer_name || !customer_phone || !delivery_address) {
+    return res.status(400).json({
+      error: "Customer name, phone number, and delivery address are required.",
+    });
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({
+      error: "Please select at least one medicine to place an order.",
+    });
+  }
+
+  for (const item of items) {
+    if (!item.medicine_id || !item.quantity || Number(item.quantity) <= 0) {
+      return res.status(400).json({
+        error: "All order items must have a valid medicine and positive quantity.",
+      });
+    }
+  }
+
+  const pool = await getPool();
+  const transaction = new sql.Transaction(pool);
+
+  try {
+    await transaction.begin();
+
+    const medicineIds = items.map((i) => i.medicine_id.replace(/'/g, ""));
+    const priceRequest = new sql.Request(transaction);
+    const medicinesResult = await priceRequest.query(`
+      SELECT id, name, unit_price
+      FROM medicines
+      WHERE id IN ('${medicineIds.join("','")}')
+    `);
+
+    const medicineMap = new Map();
+    for (const med of medicinesResult.recordset) {
+      medicineMap.set(med.id.toLowerCase(), med);
+    }
+
+    let totalAmount = 0;
+    const validatedItems = [];
+
+    for (const item of items) {
+      const med = medicineMap.get(item.medicine_id.toLowerCase());
+      if (!med) {
+        throw new Error(`Medicine record not found for ID: ${item.medicine_id}`);
+      }
+      const qty = Number(item.quantity);
+      const price = Number(med.unit_price);
+      const lineTotal = qty * price;
+      totalAmount += lineTotal;
+
+      validatedItems.push({
+        medicine_id: med.id,
+        medicine_name: med.name,
+        quantity: qty,
+        unit_price: price,
+        line_total: lineTotal,
+      });
+    }
+
+    const orderCode = shortCode("ORD");
+    const orderRequest = new sql.Request(transaction);
+    const orderResult = await orderRequest
+      .input("order_code", sql.NVarChar, orderCode)
+      .input("customer_name", sql.NVarChar, customer_name.trim())
+      .input("customer_phone", sql.NVarChar, customer_phone.trim())
+      .input("customer_email", sql.NVarChar, customer_email ? customer_email.trim() : null)
+      .input("delivery_address", sql.NVarChar, delivery_address.trim())
+      .input("notes", sql.NVarChar, notes ? notes.trim() : null)
+      .input("total_amount", sql.Decimal(12, 2), totalAmount)
+      .query(`
+        INSERT INTO pharmacy_online_orders (
+          order_code, customer_name, customer_phone, customer_email,
+          delivery_address, notes, total_amount, status
+        )
+        OUTPUT INSERTED.*
+        VALUES (
+          @order_code, @customer_name, @customer_phone, @customer_email,
+          @delivery_address, @notes, @total_amount, 'pending'
+        )
+      `);
+
+    const order = orderResult.recordset[0];
+
+    for (const item of validatedItems) {
+      const itemRequest = new sql.Request(transaction);
+      await itemRequest
+        .input("order_id", sql.UniqueIdentifier, order.id)
+        .input("medicine_id", sql.UniqueIdentifier, item.medicine_id)
+        .input("medicine_name", sql.NVarChar, item.medicine_name)
+        .input("quantity", sql.Int, item.quantity)
+        .input("unit_price", sql.Decimal(10, 2), item.unit_price)
+        .input("line_total", sql.Decimal(12, 2), item.line_total)
+        .query(`
+          INSERT INTO pharmacy_online_order_items (
+            order_id, medicine_id, medicine_name, quantity, unit_price, line_total
+          )
+          VALUES (
+            @order_id, @medicine_id, @medicine_name, @quantity, @unit_price, @line_total
+          )
+        `);
+    }
+
+    await transaction.commit();
+
+    res.status(201).json({
+      order: {
+        ...order,
+        items: validatedItems,
+      },
+      message: "Order placed successfully! Payment will be collected in cash upon delivery.",
+    });
+  } catch (err) {
+    try {
+      await transaction.rollback();
+    } catch {}
+    console.error("Failed to place online pharmacy order:", err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to place pharmacy order.",
+    });
+  }
+});
+
+// ============================================================
+// STAFF: GET /api/pharmacy/orders
+// List online customer orders (Admin / Pharmacist)
+// ============================================================
+router.get(
+  "/orders",
+  verifyToken,
+  requireRole("admin", "pharmacist"),
+  async (req, res) => {
+    const { status, search } = req.query;
+
+    try {
+      const pool = await getPool();
+      let query = `
+        SELECT
+          o.id,
+          o.order_code,
+          o.customer_name,
+          o.customer_phone,
+          o.customer_email,
+          o.delivery_address,
+          o.notes,
+          o.total_amount,
+          o.status,
+          o.created_at,
+          o.updated_at,
+          COUNT(i.id) AS items_count
+        FROM pharmacy_online_orders o
+        LEFT JOIN pharmacy_online_order_items i ON i.order_id = o.id
+        WHERE 1=1
+      `;
+
+      if (status && status !== "all") {
+        query += ` AND o.status = '${status.replace(/'/g, "")}'`;
+      }
+      if (search && search.trim()) {
+        const clean = search.trim().replace(/'/g, "");
+        query += ` AND (
+          o.customer_name LIKE '%${clean}%'
+          OR o.customer_phone LIKE '%${clean}%'
+          OR o.order_code LIKE '%${clean}%'
+        )`;
+      }
+
+      query += `
+        GROUP BY
+          o.id, o.order_code, o.customer_name, o.customer_phone, o.customer_email,
+          o.delivery_address, o.notes, o.total_amount, o.status, o.created_at, o.updated_at
+        ORDER BY o.created_at DESC
+      `;
+
+      const result = await pool.request().query(query);
+      res.json(result.recordset);
+    } catch (err) {
+      console.error("Failed to list online orders:", err);
+      res.status(500).json({ error: "Failed to load online orders." });
+    }
+  }
+);
+
+// ============================================================
+// STAFF: GET /api/pharmacy/orders/:id
+// Get single online order with items (Admin / Pharmacist)
+// ============================================================
+router.get(
+  "/orders/:id",
+  verifyToken,
+  requireRole("admin", "pharmacist"),
+  async (req, res) => {
+    try {
+      const pool = await getPool();
+      const orderResult = await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, req.params.id)
+        .query("SELECT * FROM pharmacy_online_orders WHERE id = @id");
+
+      const order = orderResult.recordset[0];
+      if (!order) {
+        return res.status(404).json({ error: "Order not found." });
+      }
+
+      const itemsResult = await pool
+        .request()
+        .input("orderId", sql.UniqueIdentifier, order.id)
+        .query("SELECT * FROM pharmacy_online_order_items WHERE order_id = @orderId");
+
+      res.json({
+        ...order,
+        items: itemsResult.recordset,
+      });
+    } catch (err) {
+      console.error("Failed to load order details:", err);
+      res.status(500).json({ error: "Failed to load order details." });
+    }
+  }
+);
+
+// ============================================================
+// STAFF: PATCH /api/pharmacy/orders/:id/status
+// Update order status: pending -> confirmed -> ready -> completed / cancelled
+// ============================================================
+router.patch(
+  "/orders/:id/status",
+  verifyToken,
+  requireRole("admin", "pharmacist"),
+  async (req, res) => {
+    const { status } = req.body;
+    const allowed = ["pending", "confirmed", "ready", "completed", "cancelled"];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: "Invalid order status value." });
+    }
+
+    try {
+      const pool = await getPool();
+      const result = await pool
+        .request()
+        .input("id", sql.UniqueIdentifier, req.params.id)
+        .input("status", sql.NVarChar, status)
+        .query(`
+          UPDATE pharmacy_online_orders
+          SET status = @status, updated_at = SYSUTCDATETIME()
+          OUTPUT INSERTED.*
+          WHERE id = @id
+        `);
+
+      if (!result.recordset[0]) {
+        return res.status(404).json({ error: "Order not found." });
+      }
+
+      res.json(result.recordset[0]);
+    } catch (err) {
+      console.error("Failed to update order status:", err);
+      res.status(500).json({ error: "Failed to update order status." });
+    }
+  }
+);
 
 module.exports = router;

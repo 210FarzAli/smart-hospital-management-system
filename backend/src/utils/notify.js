@@ -28,9 +28,10 @@ async function sendAppointmentEmail({ patient, doctor, department, appointment }
           <li><b>Appointment ID:</b> ${appointment.appointment_code}</li>
           <li><b>Doctor:</b> ${doctor.full_name} (${department?.name || ""})</li>
           <li><b>Date:</b> ${appointment.appointment_date}</li>
-          <li><b>Time:</b> ${appointment.appointment_time}</li>
+          <li><b>OPD Shift:</b> ${appointment.appointment_time}</li>
+          <li><b>Payment:</b> Pay Physically at Reception (OPD Consultation Fee: Rs. ${Number(doctor.consultation_fee || 0).toLocaleString()}). No online payment is required.</li>
         </ul>
-        <p>Please arrive 15 minutes early. Thank you.</p>
+        <p>Please arrive 15 minutes before the shift start time and pay your consultation fee at the reception counter. Thank you.</p>
       `,
     });
     return { status: "sent" };

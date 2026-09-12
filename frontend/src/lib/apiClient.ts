@@ -15,21 +15,33 @@ async function request<T>(
 ): Promise<T> {
   const token = getToken();
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token
-        ? { Authorization: `Bearer ${token}` }
-        : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (err) {
+    console.error("API Network Error:", err);
+    throw new Error(
+      "Unable to connect to the hospital service. Please check your internet connection or verify the hospital server is running."
+    );
+  }
 
   if (!res.ok) {
     const body = await res
       .json()
       .catch(() => ({}));
+
+    if (res.status === 401 && token) {
+      clearSession();
+    }
 
     throw new Error(
       body.error ||
@@ -63,6 +75,7 @@ export const authApi = {
       | "admin"
       | "doctor"
       | "pharmacist"
+      | "laboratorist"
   ) =>
     request<{
       token: string;
@@ -567,6 +580,11 @@ export const pharmacyApi = {
     request<PharmacyMedicine[]>(
       "/pharmacy/medicines"
     ),
+  publicMedicines: () =>
+    request<PharmacyMedicine[]>(
+      "/pharmacy/public-medicines"
+    ),
+
 
   prescriptionPatients: () =>
     request<PrescriptionPatient[]>(
@@ -653,10 +671,17 @@ export interface ReportOverview {
   patients: number;
   appointmentsToday: number;
   pendingAppointments: number;
+  confirmedAppointments?: number;
+  totalAppointments?: number;
 
   // Pharmacy report
   pharmacySales: number;
   pharmacyRevenue: number;
+
+  // Laboratory report
+  labBookings?: number;
+  labCompletedTests?: number;
+  labRevenue?: number;
 
   // Selected report period
   reportPeriod: ReportPeriod;
@@ -720,5 +745,160 @@ export const assistantApi = {
         sessionToken,
         message,
       }),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Laboratory API
+// ---------------------------------------------------------------------------
+import type { LabTest, LabBooking, PharmacyOnlineOrder } from "./types";
+
+export const laboratoryApi = {
+  // Public
+  tests: () => request<LabTest[]>("/laboratory/tests"),
+
+  track: (trackingId: string) =>
+    request<{ booking: LabBooking }>("/laboratory/track/" + encodeURIComponent(trackingId)),
+
+  book: (data: {
+    patient_name: string;
+    patient_phone: string;
+    patient_email?: string;
+    patient_age?: number;
+    patient_gender?: string;
+    service_type: "in_clinic" | "home_service";
+    booking_date: string;
+    booking_time?: string;
+    home_address?: string;
+    notes?: string;
+    test_ids: string[];
+  }) =>
+    request<{ booking: LabBooking; message: string }>("/laboratory/book", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Staff & Admin
+  adminBookings: (params?: { service_type?: string; status?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.service_type) query.set("service_type", params.service_type);
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString();
+    return request<LabBooking[]>(`/laboratory/bookings${qs ? `?${qs}` : ""}`);
+  },
+
+  getBooking: (id: string) => request<LabBooking>(`/laboratory/bookings/${id}`),
+
+  updateStatus: (id: string, status: string) =>
+    request<LabBooking>(`/laboratory/bookings/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  recordResults: (
+    id: string,
+    results: {
+      itemId: string;
+      resultValue: string;
+      status?: "completed" | "in_progress" | "pending" | "normal" | "abnormal";
+      normalRange?: string;
+      unit?: string;
+      remarks?: string;
+    }[]
+  ) =>
+    request<{ message: string; items: any[] }>(`/laboratory/bookings/${id}/results`, {
+      method: "POST",
+      body: JSON.stringify({ results }),
+    }),
+
+  walkIn: (data: {
+    patient_name: string;
+    patient_phone: string;
+    patient_email?: string;
+    patient_age?: number;
+    patient_gender?: string;
+    notes?: string;
+    test_ids: string[];
+  }) =>
+    request<{ booking: LabBooking; tracking_id: string; message: string }>("/laboratory/walk-in", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  patientHistory: (params: { phone?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params.phone) query.set("phone", params.phone);
+    if (params.search) query.set("search", params.search);
+    return request<LabBooking[]>(`/laboratory/patient-history?${query.toString()}`);
+  },
+
+  stats: () =>
+    request<{
+      totalBookings: number;
+      pendingHomeRequests: number;
+      samplesInProgress: number;
+      completedBookings: number;
+      activeTestsCount: number;
+      totalRevenue: number;
+    }>("/laboratory/stats"),
+
+  createTest: (data: Partial<LabTest>) =>
+    request<LabTest>("/laboratory/tests", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateTest: (id: string, data: Partial<LabTest>) =>
+    request<LabTest>(`/laboratory/tests/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Online Pharmacy Shop API
+// ---------------------------------------------------------------------------
+export interface CatalogMedicine {
+  id: string;
+  name: string;
+  category: string | null;
+  unit_price: number;
+  in_stock: number;
+  reorder_level?: number;
+}
+
+export const onlinePharmacyApi = {
+  // Public
+  catalog: () => request<CatalogMedicine[]>("/pharmacy/catalog"),
+
+  placeOrder: (data: {
+    customer_name: string;
+    customer_phone: string;
+    customer_email?: string;
+    delivery_address: string;
+    notes?: string;
+    items: { medicine_id: string; quantity: number }[];
+  }) =>
+    request<{ order: PharmacyOnlineOrder; message: string }>("/pharmacy/orders", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Staff & Admin
+  orders: (params?: { status?: string; search?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString();
+    return request<PharmacyOnlineOrder[]>(`/pharmacy/orders${qs ? `?${qs}` : ""}`);
+  },
+
+  getOrder: (id: string) => request<PharmacyOnlineOrder>(`/pharmacy/orders/${id}`),
+
+  updateStatus: (id: string, status: string) =>
+    request<PharmacyOnlineOrder>(`/pharmacy/orders/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
 };

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { departmentsApi, doctorsApi } from "../../lib/apiClient";
 import type { Department, Doctor } from "../../lib/types";
+import { getPatientFriendlyDepartmentName } from "../../lib/departmentUtils";
 import DoctorCard from "../../components/DoctorCard";
 import {
   HospitalIcon,
@@ -71,7 +72,7 @@ export default function DepartmentDetail() {
             <ChevronRightIcon className="w-3.5 h-3.5 text-slate-400" />
             <Link to="/departments" className="hover:text-white transition">Departments</Link>
             <ChevronRightIcon className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-white font-semibold">{department.name}</span>
+            <span className="text-white font-semibold">{getPatientFriendlyDepartmentName(department.name)}</span>
           </nav>
 
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -82,7 +83,7 @@ export default function DepartmentDetail() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl text-white">
-                    {department.name}
+                    {getPatientFriendlyDepartmentName(department.name)}
                   </h1>
                   <span className="badge-teal mt-1">
                     <CheckCircleIcon className="w-3 h-3 text-teal-700" />
@@ -130,7 +131,7 @@ export default function DepartmentDetail() {
                   className="btn-primary w-full py-2.5 text-xs font-bold"
                 >
                   <CalendarIcon className="w-4 h-4" />
-                  <span>Book in {department.name}</span>
+                  <span>Book in {getPatientFriendlyDepartmentName(department.name)}</span>
                 </Link>
               </div>
             </div>

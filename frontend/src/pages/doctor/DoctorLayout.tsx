@@ -108,8 +108,6 @@ export default function DoctorLayout() {
             </div>
             <Link
               to="/"
-              target="_blank"
-              rel="noreferrer"
               className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-slate-300 hover:bg-teal-900/60 hover:text-white"
             >
               <span>Hospital Home</span>

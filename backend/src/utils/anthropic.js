@@ -578,6 +578,260 @@ async function askAssistant(history, newMessage) {
   }
 }
 
+// ============================================================
+// MEDICINE INTERACTION SAFETY
+// ============================================================
+
+const MEDICINE_INTERACTION_SOURCE =
+  "https://www.emedicinehealth.com/which_medicines_should_not_be_taken_together/article_em.htm";
+
+let interactionSourceCache = {
+  content: null,
+  fetchedAt: 0,
+};
+
+const INTERACTION_CACHE_MS = 15 * 60 * 1000;
+
+function isInteractionQuery(message) {
+  const text = String(message || "").toLowerCase();
+
+  const interactionPatterns = [
+    "take together",
+    "taken together",
+    "can i take",
+    "can we take",
+    "can these medicines",
+    "can these medications",
+    "medicine together",
+    "medicines together",
+    "medication together",
+    "medications together",
+    "mix medicines",
+    "mix medications",
+    "mix these medicines",
+    "mix these medications",
+    "drug interaction",
+    "drug interactions",
+    "medicine interaction",
+    "medicine interactions",
+    "medication interaction",
+    "medication interactions",
+    "interact with",
+    "interaction between",
+    "safe together",
+    "safe to take together",
+    "safe to use together",
+    "not be taken together",
+    "should not be taken together",
+    "which medicines should not",
+    "which medications should not",
+    "which drugs should not",
+    "dawaiyan sath",
+    "dawai saath",
+    "dawai ek sath",
+    "dawai aik sath",
+    "dawaiyan ek sath",
+    "dawaiyan aik sath",
+    "dawaiyan sath le",
+    "dawai sath le",
+    "dawai milakar",
+    "dawai mix",
+    "dawaiyon ka interaction",
+    "medicine sath le sakta",
+    "medicines sath le sakta",
+    "medicines sath",
+    "medicine sath",
+    "dawai sath",
+    "dawaiyan sath",
+  ];
+
+  return interactionPatterns.some((pattern) =>
+    text.includes(pattern)
+  );
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchMedicineInteractionSource() {
+  const now = Date.now();
+
+  if (
+    interactionSourceCache.content &&
+    now - interactionSourceCache.fetchedAt <
+      INTERACTION_CACHE_MS
+  ) {
+    return interactionSourceCache.content;
+  }
+
+  try {
+    const response = await fetch(
+      MEDICINE_INTERACTION_SOURCE,
+      {
+        method: "GET",
+        headers: {
+          "User-Agent":
+            "CityCareHospital-AIHealthAssistant/1.0",
+          "Accept":
+            "text/html,application/xhtml+xml",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Interaction source returned HTTP ${response.status}`
+      );
+    }
+
+    const html = await response.text();
+    const text = stripHtml(html);
+
+    if (!text || text.length < 500) {
+      throw new Error(
+        "Interaction source returned insufficient content."
+      );
+    }
+
+    // Limit the amount of external content sent to Groq.
+    const usefulContent = text.slice(0, 30000);
+
+    interactionSourceCache = {
+      content: usefulContent,
+      fetchedAt: now,
+    };
+
+    return usefulContent;
+  } catch (error) {
+    console.error(
+      "Medicine interaction source error:",
+      error.message
+    );
+
+    return null;
+  }
+}
+
+async function handleMedicineInteraction(message, language) {
+  const sourceContent =
+    await fetchMedicineInteractionSource();
+
+  if (!sourceContent) {
+    if (language === "urdu") {
+      return (
+        "میں اس وقت قابلِ اعتماد طبی ذریعہ سے اس دوا کے امتزاج کی تصدیق نہیں کر سکا۔ " +
+        "براہِ کرم ان ادویات کو ایک ساتھ لینے سے پہلے ڈاکٹر یا فارماسسٹ سے تصدیق کریں۔"
+      );
+    }
+
+    if (language === "roman_urdu") {
+      return (
+        "Main is waqt reliable medical source se in medicines ke combination ki tasdeeq nahi kar saka. " +
+        "In medicines ko aik sath lene se pehle doctor ya pharmacist se confirm karein."
+      );
+    }
+
+    return (
+      "I could not verify this medicine combination from the configured medical source right now. " +
+      "Please confirm with a qualified doctor or pharmacist before taking these medicines together."
+    );
+  }
+
+  const languageInstruction =
+    language === "urdu"
+      ? "Respond primarily in Urdu Script."
+      : language === "roman_urdu"
+      ? "Respond primarily in Roman Urdu."
+      : "Respond in English.";
+
+  const interactionPrompt = `
+You are handling a MEDICINE INTERACTION SAFETY question.
+
+The patient asked:
+"${String(message || "").slice(0, 2000)}"
+
+A configured medical source was retrieved from:
+${MEDICINE_INTERACTION_SOURCE}
+
+SOURCE CONTENT:
+${sourceContent}
+
+IMPORTANT SAFETY RULES:
+
+1. Use ONLY information supported by the retrieved source.
+2. Do NOT invent a drug interaction.
+3. Do NOT claim an interaction exists if the source does not support it.
+4. If the source does not provide enough information to determine the interaction, say that it could not be verified.
+5. If the source indicates that the combination may be dangerous or may have a clinically important interaction, clearly warn the patient.
+6. Recommend consulting a qualified doctor or pharmacist for confirmation.
+7. Do NOT prescribe an alternative medicine.
+8. Do NOT provide a personalized dosage.
+9. Do NOT tell the patient to start, stop, increase, decrease, or replace a medicine.
+10. Do NOT give a treatment plan.
+11. Keep the answer short and understandable.
+12. Do not diagnose the patient.
+13. If the patient may be experiencing a serious reaction, advise urgent medical attention.
+14. If the medicine names are unclear or missing, ask the patient to provide the exact medicine names.
+
+${languageInstruction}
+
+Return ONLY the patient-facing answer.
+`;
+
+  try {
+    const completion =
+      await groq.chat.completions.create({
+        model: "openai/gpt-oss-120b",
+
+        messages: [
+          {
+            role: "system",
+            content: interactionPrompt,
+          },
+        ],
+
+        max_tokens: 350,
+        temperature: 0.1,
+      });
+
+    return (
+      completion.choices?.[0]?.message?.content?.trim() ||
+      (language === "urdu"
+        ? "براہِ کرم ان ادویات کو ایک ساتھ لینے سے پہلے ڈاکٹر یا فارماسسٹ سے تصدیق کریں۔"
+        : language === "roman_urdu"
+        ? "In medicines ko aik sath lene se pehle doctor ya pharmacist se confirm karein."
+        : "Please confirm this medicine combination with a qualified doctor or pharmacist before taking them together.")
+    );
+  } catch (error) {
+    console.error(
+      "Medicine interaction Groq error:",
+      error.message
+    );
+
+    if (language === "urdu") {
+      return "میں اس وقت اس امتزاج کی قابلِ اعتماد تصدیق نہیں کر سکا۔ براہِ کرم ڈاکٹر یا فارماسسٹ سے تصدیق کریں۔";
+    }
+
+    if (language === "roman_urdu") {
+      return "Main is waqt is combination ki reliable tasdeeq nahi kar saka. Barah-e-karam doctor ya pharmacist se confirm karein.";
+    }
+
+    return "I could not reliably verify this medicine combination right now. Please confirm with a qualified doctor or pharmacist.";
+  }
+}
+
 // Used only to tag messages stored in the database.
 function detectLanguage(text) {
   const value = String(text || "").trim();
@@ -769,4 +1023,6 @@ function detectLanguage(text) {
 module.exports = {
   askAssistant,
   detectLanguage,
+  isInteractionQuery,
+  handleMedicineInteraction,
 };

@@ -185,8 +185,11 @@ router.get(
         patients,
         appointmentsToday,
         pendingAppointments,
+        confirmedAppointments,
+        totalAppointments,
         pharmacySales,
         reviews,
+        labMetrics,
       ] = await Promise.all([
         // ------------------------------------------------------
         // Doctors
@@ -224,6 +227,23 @@ router.get(
         `),
 
         // ------------------------------------------------------
+        // Confirmed appointments
+        // ------------------------------------------------------
+        pool.request().query(`
+          SELECT COUNT(*) AS count
+          FROM appointments
+          WHERE status = 'confirmed'
+        `),
+
+        // ------------------------------------------------------
+        // Total appointments
+        // ------------------------------------------------------
+        pool.request().query(`
+          SELECT COUNT(*) AS count
+          FROM appointments
+        `),
+
+        // ------------------------------------------------------
         // Pharmacy report
         // ------------------------------------------------------
         pharmacyRequest.query(`
@@ -252,7 +272,26 @@ router.get(
             ) AS avg_rating
           FROM reviews
         `),
+
+        // ------------------------------------------------------
+        // Laboratory metrics
+        // ------------------------------------------------------
+        pool.request().query(`
+          IF EXISTS (SELECT * FROM sys.tables WHERE name = 'lab_bookings')
+          BEGIN
+            SELECT
+              (SELECT COUNT(*) FROM lab_bookings WHERE status != 'cancelled') AS total_bookings,
+              (SELECT COUNT(*) FROM lab_booking_items WHERE result_status = 'completed') AS completed_tests,
+              (SELECT ISNULL(SUM(total_amount), 0) FROM lab_bookings WHERE status != 'cancelled') AS revenue
+          END
+          ELSE
+          BEGIN
+            SELECT 0 AS total_bookings, 0 AS completed_tests, 0 AS revenue
+          END
+        `),
       ]);
+
+      const labStats = labMetrics?.recordset?.[0] || { total_bookings: 0, completed_tests: 0, revenue: 0 };
 
       // --------------------------------------------------------
       // Determine report period label
@@ -293,12 +332,23 @@ router.get(
         pendingAppointments:
           pendingAppointments.recordset[0].count,
 
+        confirmedAppointments:
+          confirmedAppointments.recordset[0].count,
+
+        totalAppointments:
+          totalAppointments.recordset[0].count,
+
         // Pharmacy report
         pharmacySales:
           pharmacySales.recordset[0].count,
 
         pharmacyRevenue:
           pharmacySales.recordset[0].revenue,
+
+        // Laboratory report
+        labBookings: Number(labStats.total_bookings || 0),
+        labCompletedTests: Number(labStats.completed_tests || 0),
+        labRevenue: Number(labStats.revenue || 0),
 
         // Selected report information
         reportPeriod: period,

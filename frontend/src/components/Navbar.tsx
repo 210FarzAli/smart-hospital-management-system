@@ -15,6 +15,8 @@ const links = [
   { to: "/", label: "Home" },
   { to: "/departments", label: "Departments" },
   { to: "/doctors", label: "Doctors" },
+  { to: "/laboratory", label: "Laboratory" },
+  { to: "/pharmacy-shop", label: "Pharmacy" },
   { to: "/reviews", label: "Reviews" },
   {
     to: "/assistant",
@@ -70,6 +72,13 @@ export default function Navbar() {
               className="hover:text-white transition-colors underline-offset-4 hover:underline"
             >
               Pharmacy
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link
+              to="/lab/login"
+              className="hover:text-white transition-colors underline-offset-4 hover:underline"
+            >
+              Laboratory
             </Link>
           </div>
         </div>
@@ -205,10 +214,11 @@ export default function Navbar() {
 
               <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
                 <p className="font-semibold text-slate-800">Staff Access Portals:</p>
-                <div className="flex gap-4 text-teal-800 font-medium">
-                  <Link to="/admin/login" onClick={() => setMobileMenuOpen(false)}>Admin Panel</Link>
-                  <Link to="/doctor/login" onClick={() => setMobileMenuOpen(false)}>Doctor Panel</Link>
-                  <Link to="/pharmacy/login" onClick={() => setMobileMenuOpen(false)}>Pharmacy Panel</Link>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-teal-800 font-medium">
+                  <Link to="/admin/login" onClick={() => setMobileMenuOpen(false)}>Admin</Link>
+                  <Link to="/doctor/login" onClick={() => setMobileMenuOpen(false)}>Doctor</Link>
+                  <Link to="/pharmacy/login" onClick={() => setMobileMenuOpen(false)}>Pharmacy</Link>
+                  <Link to="/lab/login" onClick={() => setMobileMenuOpen(false)}>Laboratory</Link>
                 </div>
               </div>
             </nav>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { departmentsApi, doctorsApi } from "../../lib/apiClient";
 import type { Department, Doctor } from "../../lib/types";
+import { getPatientFriendlyDepartmentName } from "../../lib/departmentUtils";
 import DoctorCard from "../../components/DoctorCard";
 import {
   SearchIcon,
@@ -81,7 +82,7 @@ export default function Doctors() {
               <option value="all" className="bg-slate-900 text-white">All Departments</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id} className="bg-slate-900 text-white">
-                  {d.name}
+                  {getPatientFriendlyDepartmentName(d.name)}
                 </option>
               ))}
             </select>
@@ -114,7 +115,7 @@ export default function Doctors() {
                   : "bg-white text-slate-600 border border-slate-200 hover:border-teal-300 hover:text-teal-900"
               }`}
             >
-              {d.name}
+              {getPatientFriendlyDepartmentName(d.name)}
             </button>
           ))}
         </div>

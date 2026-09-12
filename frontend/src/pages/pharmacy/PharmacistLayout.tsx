@@ -19,6 +19,7 @@ const links = [
   { to: "/pharmacy/dashboard", label: "Overview", icon: Activity },
   { to: "/pharmacy/medicines", label: "Stock & Inventory", icon: Pill },
   { to: "/pharmacy/new-sale", label: "POS / New Sale", icon: Plus },
+  { to: "/pharmacy/orders", label: "Online Orders", icon: FileText },
   { to: "/pharmacy/customers", label: "Customers", icon: Users },
   { to: "/pharmacy/sales", label: "Sales & Receipts", icon: FileText },
 ];
@@ -99,8 +100,6 @@ export default function PharmacistLayout() {
             </div>
             <Link
               to="/"
-              target="_blank"
-              rel="noreferrer"
               className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-slate-300 hover:bg-teal-900/60 hover:text-white"
             >
               <span>Hospital Home</span>

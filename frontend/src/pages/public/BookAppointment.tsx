@@ -6,6 +6,7 @@ import {
   appointmentsApi,
 } from "../../lib/apiClient";
 import type { Department, Doctor } from "../../lib/types";
+import { getPatientFriendlyDepartmentName } from "../../lib/departmentUtils";
 import {
   Calendar,
   Clock,
@@ -100,13 +101,15 @@ function getUpcomingAvailableDates(doctor: Doctor) {
 export default function BookAppointment() {
   const [searchParams] = useSearchParams();
   const initialDoctorId = searchParams.get("doctorId") ?? "";
+  const initialDate = searchParams.get("date") ?? "";
+  const initialTime = searchParams.get("time") ?? "";
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
 
   const [departmentId, setDepartmentId] = useState("");
   const [doctorId, setDoctorId] = useState(initialDoctorId);
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(initialDate);
   const [shift, setShift] = useState<DoctorShift | null>(null);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -145,10 +148,13 @@ export default function BookAppointment() {
         if (doc && doc.department_id) {
           setDepartmentId(doc.department_id);
           setDoctorId(doc.id);
+          if (initialDate) {
+            setDate(initialDate);
+          }
         }
       })
       .catch(console.error);
-  }, [initialDoctorId]);
+  }, [initialDoctorId, initialDate]);
 
   // Load doctors when department changes
   useEffect(() => {
@@ -178,10 +184,9 @@ export default function BookAppointment() {
 
   // Generate dates when doctor selection changes
   useEffect(() => {
-    setDate("");
-    setShift(null);
-
     if (!doctorId) {
+      setDate("");
+      setShift(null);
       setAvailableDates([]);
       return;
     }
@@ -194,7 +199,14 @@ export default function BookAppointment() {
 
     const dates = getUpcomingAvailableDates(currentDoc);
     setAvailableDates(dates);
-  }, [doctorId, doctors]);
+
+    if (initialDate && (dates.includes(initialDate) || dates.length > 0)) {
+      setDate(initialDate);
+    } else if (date && !dates.includes(date)) {
+      setDate("");
+      setShift(null);
+    }
+  }, [doctorId, doctors, initialDate]);
 
   // Load shift availability for the chosen date
   useEffect(() => {
@@ -330,7 +342,7 @@ export default function BookAppointment() {
                     {selectedDoctor?.full_name || "Assigned Specialist"}
                   </div>
                   <div className="text-xs text-slate-500">
-                    {selectedDoctor?.specialization || selectedDept?.name}
+                    {selectedDoctor?.specialization || (selectedDept?.name ? getPatientFriendlyDepartmentName(selectedDept.name) : "")}
                   </div>
                 </div>
 
@@ -361,12 +373,15 @@ export default function BookAppointment() {
                 <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                     <Hospital className="h-4 w-4 text-teal-700" />
-                    Consultation Fee
+                    OPD Consultation Fee
                   </div>
                   <div className="mt-1 font-bold text-teal-950">
                     Rs. {Number(selectedDoctor?.consultation_fee || 0).toLocaleString()}
                   </div>
-                  <div className="text-xs text-slate-500">Payable at clinic desk</div>
+                  <div className="mt-0.5 text-xs font-semibold text-emerald-700">
+                    Payment: Pay Physically at Reception
+                  </div>
+                  <div className="text-[11px] text-slate-500">No online payment required</div>
                 </div>
               </div>
 
@@ -474,7 +489,7 @@ export default function BookAppointment() {
                       <option value="">Choose Department</option>
                       {departments.map((dept) => (
                         <option key={dept.id} value={dept.id}>
-                          {dept.name}
+                          {getPatientFriendlyDepartmentName(dept.name)}
                         </option>
                       ))}
                     </select>
@@ -511,9 +526,12 @@ export default function BookAppointment() {
                   <div className="mt-4 flex flex-wrap items-center justify-between rounded-xl bg-teal-50/60 p-3 text-xs text-teal-950 ring-1 ring-teal-100">
                     <div className="flex items-center gap-2 font-medium">
                       <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-                      Consultation Fee:{" "}
+                      OPD Consultation Fee:{" "}
                       <span className="font-bold">
                         Rs. {Number(selectedDoctor.consultation_fee || 0).toLocaleString()}
+                      </span>
+                      <span className="ml-1 font-semibold text-emerald-700">
+                        • Pay Physically at Reception (No online payment)
                       </span>
                     </div>
                     {selectedDoctor.qualification && (
@@ -763,7 +781,7 @@ export default function BookAppointment() {
                 <div className="pt-2">
                   <span className="text-xs text-slate-500">Department</span>
                   <div className="font-semibold text-teal-950">
-                    {selectedDept?.name || "Not selected"}
+                    {selectedDept?.name ? getPatientFriendlyDepartmentName(selectedDept.name) : "Not selected"}
                   </div>
                 </div>
 
@@ -793,10 +811,15 @@ export default function BookAppointment() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-3">
-                  <span className="font-medium text-slate-700">Fee Estimate</span>
-                  <span className="font-bold text-teal-950">
-                    Rs. {Number(selectedDoctor?.consultation_fee || 0).toLocaleString()}
+                <div className="flex flex-col gap-1 pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-700">OPD Consultation Fee</span>
+                    <span className="font-bold text-teal-950">
+                      Rs. {Number(selectedDoctor?.consultation_fee || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-emerald-700">
+                    Payment: Pay Physically at Reception
                   </span>
                 </div>
               </div>

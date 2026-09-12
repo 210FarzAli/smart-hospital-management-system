@@ -632,7 +632,8 @@ router.post("/", async (req, res) => {
           doctor_id,
           appointment_date,
           appointment_time,
-          reason
+          reason,
+          status
         )
         OUTPUT INSERTED.*
         VALUES
@@ -642,7 +643,8 @@ router.post("/", async (req, res) => {
           @doctor_id,
           @appointment_date,
           @appointment_time,
-          @reason
+          @reason,
+          'confirmed'
         )
       `);
 

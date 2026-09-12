@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { Doctor } from "../lib/types";
+import { getPatientFriendlyDepartmentName } from "../lib/departmentUtils";
 import StarRating from "./StarRating";
 import { CalendarIcon, ChevronRightIcon, ShieldCheckIcon } from "./icons/Icons";
 
@@ -38,8 +39,8 @@ export default function DoctorCard({ doctor }: { doctor: Doctor }) {
 
           <div className="min-w-0 flex-1">
             {doctor.department_name && (
-              <span className="inline-block truncate rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-teal-800 border border-teal-200/50 mb-1">
-                {doctor.department_name}
+              <span className="inline-block truncate rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-teal-800 border border-teal-200/50 mb-1 max-w-full" title={getPatientFriendlyDepartmentName(doctor.department_name)}>
+                {getPatientFriendlyDepartmentName(doctor.department_name)}
               </span>
             )}
             <h3 className="truncate text-base font-bold text-slate-900 group-hover:text-teal-900 transition-colors">
@@ -69,7 +70,7 @@ export default function DoctorCard({ doctor }: { doctor: Doctor }) {
         <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-100">
           <StarRating rating={doctor.rating} />
           <div className="text-right">
-            <span className="text-[11px] uppercase tracking-wide text-slate-400 block font-medium">Fee</span>
+            <span className="text-[11px] uppercase tracking-wide text-slate-500 block font-semibold">OPD Fee</span>
             <span className="text-sm font-bold text-teal-950">
               Rs. {doctor.consultation_fee.toLocaleString()}
             </span>

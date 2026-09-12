@@ -12,6 +12,15 @@ const {
   sendAppointmentEmail,
 } = require("../utils/notify");
 
+const {
+  checkEmergency,
+  checkPrescriptionDosageDenial,
+  isInteractionQuery,
+  handleMedicineInteraction,
+  handlePharmacyFlow,
+  handleLabFlow,
+} = require("../utils/assistantHandlers");
+
 const router = express.Router();
 
 const groq = new Groq({
@@ -37,12 +46,14 @@ function getSession(sessionToken) {
     now - session.updatedAt > SESSION_TTL_MS
   ) {
     session = {
-  history: [],
-  booking: null,
-  doctorOptions: [],
-  doctorSuggestionPending: false,
-  updatedAt: now,
-};
+      history: [],
+      booking: null,
+      pharmacyOrder: null,
+      labBooking: null,
+      doctorOptions: [],
+      doctorSuggestionPending: false,
+      updatedAt: now,
+    };
 
     sessions.set(sessionToken, session);
   }
@@ -2836,6 +2847,76 @@ const language =
 
       const pool =
   await getPool();
+
+      // ======================================================
+      // 1. EMERGENCY SAFETY PRE-CHECK
+      // ======================================================
+      const emergencyAlert = checkEmergency(message, language);
+      if (emergencyAlert) {
+        addHistory(session, "user", message);
+        addHistory(session, "assistant", emergencyAlert);
+        return res.json({
+          reply: emergencyAlert,
+          conversationId: sessionToken,
+          language,
+        });
+      }
+
+      // ======================================================
+      // 2. PRESCRIPTION & DOSAGE DENIAL GUARDRAIL
+      // ======================================================
+      const dosageDenial = checkPrescriptionDosageDenial(message, language);
+      if (dosageDenial) {
+        addHistory(session, "user", message);
+        addHistory(session, "assistant", dosageDenial);
+        return res.json({
+          reply: dosageDenial,
+          conversationId: sessionToken,
+          language,
+        });
+      }
+
+      // ======================================================
+      // 3. MEDICINE INTERACTION SAFETY CHECK
+      // ======================================================
+      if (isInteractionQuery(message)) {
+        const interactionReply = await handleMedicineInteraction(message, language);
+        addHistory(session, "user", message);
+        addHistory(session, "assistant", interactionReply);
+        return res.json({
+          reply: interactionReply,
+          conversationId: sessionToken,
+          language,
+        });
+      }
+
+      // ======================================================
+      // 4. PHARMACY ACTIONS & ORDER FLOW
+      // ======================================================
+      const pharmacyReply = await handlePharmacyFlow(pool, session, message, language);
+      if (pharmacyReply) {
+        addHistory(session, "user", message);
+        addHistory(session, "assistant", pharmacyReply);
+        return res.json({
+          reply: pharmacyReply,
+          conversationId: sessionToken,
+          language,
+        });
+      }
+
+      // ======================================================
+      // 5. LABORATORY ACTIONS & BOOKING FLOW
+      // ======================================================
+      const labReply = await handleLabFlow(pool, session, message, language);
+      if (labReply) {
+        addHistory(session, "user", message);
+        addHistory(session, "assistant", labReply);
+        return res.json({
+          reply: labReply,
+          conversationId: sessionToken,
+          language,
+        });
+      }
 
 // ======================================================
 // DEPARTMENT LIST

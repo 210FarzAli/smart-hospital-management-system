@@ -3,31 +3,25 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import {
   Activity,
-  Stethoscope,
   Calendar,
-  Pill,
-  TrendingUp,
+  FileText,
   LogOut,
   Hospital,
-  User,
   ShieldCheck,
   Menu,
   X,
   ArrowRight,
-  FileText,
+  User,
 } from "../../components/icons/Icons";
 
 const links = [
-  { to: "/admin/dashboard", label: "Overview", icon: Activity },
-  { to: "/admin/doctors", label: "Doctors Directory", icon: Stethoscope },
-  { to: "/admin/appointments", label: "Appointments", icon: Calendar },
-  { to: "/admin/laboratory", label: "Laboratory Tests", icon: FileText },
-  { to: "/admin/pharmacy", label: "Pharmacy Stock", icon: Pill },
-  { to: "/admin/reports", label: "Reports & Analytics", icon: TrendingUp },
+  { to: "/lab/dashboard", label: "Overview", icon: Activity },
+  { to: "/lab/bookings", label: "Bookings & Samples", icon: Calendar },
+  { to: "/lab/results", label: "Diagnostic Results Entry", icon: FileText },
 ];
 
-export default function AdminLayout() {
-  const { staffUser, signOut } = useAuth("admin");
+export default function LaboratoryLayout() {
+  const { staffUser, signOut } = useAuth("laboratorist");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -50,14 +44,14 @@ export default function AdminLayout() {
         <div className="flex h-16 items-center justify-between border-b border-teal-900/80 px-6">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-600 text-white shadow-md">
-              <Hospital className="h-5 w-5" />
+              <Activity className="h-5 w-5" />
             </div>
             <div>
               <span className="text-sm font-extrabold tracking-tight text-white">
                 SMART HOSPITAL
               </span>
               <span className="block text-[10px] font-semibold tracking-wider text-teal-400 uppercase">
-                Admin Console
+                Laboratory Suite
               </span>
             </div>
           </Link>
@@ -71,9 +65,9 @@ export default function AdminLayout() {
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-6">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-teal-400 uppercase">
-            Operations & Management
+            Laboratory Navigation
           </div>
           {links.map((item) => {
             const Icon = item.icon;
@@ -83,14 +77,14 @@ export default function AdminLayout() {
                 to={item.to}
                 onClick={() => setMobileNavOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all duration-150 ${
+                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all ${
                     isActive
-                      ? "bg-teal-700/70 text-white shadow-sm ring-1 ring-teal-500/40"
+                      ? "bg-teal-700 text-white shadow-sm"
                       : "text-slate-300 hover:bg-teal-900/60 hover:text-white"
                   }`
                 }
               >
-                <Icon className="h-4 w-4 shrink-0 text-teal-300" />
+                <Icon className="h-4 w-4 shrink-0" />
                 <span>{item.label}</span>
               </NavLink>
             );
@@ -104,7 +98,7 @@ export default function AdminLayout() {
               to="/"
               className="flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium text-slate-300 hover:bg-teal-900/60 hover:text-white"
             >
-              <span>Public Website</span>
+              <span>Hospital Home</span>
               <ArrowRight className="h-3 w-3 text-teal-400" />
             </Link>
           </div>
@@ -114,65 +108,60 @@ export default function AdminLayout() {
         <div className="border-t border-teal-900/80 p-4">
           <div className="mb-3 flex items-center gap-3 rounded-xl bg-teal-900/40 p-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-800 text-xs font-bold text-white">
-              {staffUser?.fullName ? staffUser.fullName.charAt(0).toUpperCase() : "A"}
+              {staffUser?.fullName ? staffUser.fullName.charAt(0).toUpperCase() : "L"}
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-bold text-white">
-                {staffUser?.fullName || "Administrator"}
+                {staffUser?.fullName || "Laboratorist"}
               </div>
               <div className="text-[10px] text-teal-300">
-                Hospital Admin Role
+                Diagnostic Pathology Role
               </div>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={signOut}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-teal-800/80 bg-teal-900/30 px-3 py-2 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 hover:text-rose-200"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-teal-800/80 bg-teal-900/30 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-300"
           >
-            <LogOut className="h-4 w-4" />
-            <span>Sign out</span>
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-8 shadow-xs">
+      {/* Main Content Pane */}
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* Top Header Bar */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+              className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 lg:hidden"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="hidden items-center gap-2 text-xs font-medium text-slate-500 sm:flex">
-              <span>Admin Portal</span>
-              <span>/</span>
-              <span className="font-semibold text-teal-950">Management Dashboard</span>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
+              <ShieldCheck className="h-4 w-4 text-teal-700" />
+              <span>Smart Hospital Central Laboratory</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>Admin Privileges Active</span>
-            </div>
-
-            <div className="hidden text-right text-xs sm:block">
-              <div className="font-bold text-teal-950">{staffUser?.fullName}</div>
-              <div className="text-slate-400">{staffUser?.email || "admin@hospital.com"}</div>
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <div className="text-xs font-bold text-slate-800">
+                {staffUser?.fullName || "Lab Specialist"}
+              </div>
+              <div className="text-[10px] text-slate-500">Pathology Intake</div>
             </div>
           </div>
         </header>
 
-        {/* Scrollable Page Body */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8">
-          <div className="mx-auto max-w-7xl">
-            <Outlet />
-          </div>
+        {/* Content Outlet */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          <Outlet />
         </main>
       </div>
     </div>

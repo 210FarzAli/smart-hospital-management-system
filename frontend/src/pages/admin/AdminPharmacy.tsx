@@ -106,7 +106,7 @@ export default function AdminPharmacy() {
 
         <div className="card p-5">
           <div className="text-xs font-bold text-emerald-800 uppercase">
-            Adequate Stock
+            In Stock
           </div>
           <div className="mt-2 text-3xl font-extrabold text-emerald-700">
             {medicines.length - lowStockCount}
@@ -169,7 +169,7 @@ export default function AdminPharmacy() {
                 <th className="px-5 py-3.5">Category</th>
                 <th className="px-5 py-3.5">Unit Price</th>
                 <th className="px-5 py-3.5">Stock Level</th>
-                <th className="px-5 py-3.5">Reorder Point</th>
+                <th className="px-5 py-3.5">Reorder Level</th>
                 <th className="px-5 py-3.5 text-right">Status</th>
               </tr>
             </thead>
@@ -264,7 +264,7 @@ export default function AdminPharmacy() {
                             ? "Out of Stock"
                             : isLow
                             ? "Low Stock"
-                            : "Healthy"}
+                            : "In Stock"}
                         </span>
                       </td>
                     </tr>

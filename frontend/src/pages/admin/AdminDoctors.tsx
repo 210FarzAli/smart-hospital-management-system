@@ -269,8 +269,8 @@ export default function AdminDoctors() {
         </button>
       </div>
 
-      {/* Search & Filter Toolbar */}
-      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Search Toolbar */}
+      <div className="card flex items-center justify-between p-4">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
           <input
@@ -281,19 +281,15 @@ export default function AdminDoctors() {
             className="input-field pl-9 text-xs"
           />
         </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-500">Filter:</label>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as DoctorFilter)}
-            className="input-field py-1.5 text-xs w-auto"
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="ml-3 text-xs font-semibold text-teal-800 hover:text-teal-950"
           >
-            <option value="all">All Doctors ({doctors.length})</option>
-            <option value="active">Active Only ({activeCount})</option>
-            <option value="inactive">Deactivated Only ({inactiveCount})</option>
-          </select>
-        </div>
+            Clear Search
+          </button>
+        )}
       </div>
 
       {/* Error alert */}

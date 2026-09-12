@@ -84,6 +84,16 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
+                <Link to="/laboratory" className="hover:text-teal-300 transition-colors">
+                  Diagnostic Laboratory & Reports
+                </Link>
+              </li>
+              <li>
+                <Link to="/pharmacy-shop" className="hover:text-teal-300 transition-colors">
+                  Online Pharmacy Store
+                </Link>
+              </li>
+              <li>
                 <Link to="/assistant" className="hover:text-teal-300 transition-colors">
                   AI Health Assistant (24/7)
                 </Link>
@@ -155,6 +165,13 @@ export default function Footer() {
               >
                 <span>Pharmacy Specialist</span>
                 <span className="text-[10px] text-teal-400 font-mono">/pharmacy</span>
+              </Link>
+              <Link
+                to="/lab/login"
+                className="flex items-center justify-between rounded-xl border border-teal-900/60 bg-teal-950/60 px-3.5 py-2.5 text-xs font-semibold text-teal-200 transition hover:bg-teal-900/50 hover:text-white"
+              >
+                <span>Laboratory Specialist</span>
+                <span className="text-[10px] text-teal-400 font-mono">/lab</span>
               </Link>
             </div>
           </div>

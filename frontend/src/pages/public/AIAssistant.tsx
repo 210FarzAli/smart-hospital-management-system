@@ -52,19 +52,27 @@ export default function AIAssistant() {
   // They disappear permanently after the first user message.
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  const chatContainerRef =
-    useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const latestUserMsgRef = useRef<HTMLDivElement>(null);
 
-  // Keep scrolling limited to the chat container.
-  // This prevents the whole browser page from jumping.
+  // Scroll behavior:
+  // When a newly sent user message is added, position it near the top of the internal chat container
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: "smooth",
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === "user") {
+      requestAnimationFrame(() => {
+        if (latestUserMsgRef.current && chatContainerRef.current) {
+          const containerRect = chatContainerRef.current.getBoundingClientRect();
+          const msgRect = latestUserMsgRef.current.getBoundingClientRect();
+          const offset = msgRect.top - containerRect.top;
+          chatContainerRef.current.scrollBy({
+            top: offset - 24, // 24px margin from top of internal chat container
+            behavior: "smooth",
+          });
+        }
       });
     }
-  }, [messages, loading]);
+  }, [messages]);
 
   async function handleSend(textToSend?: string) {
     const query = (textToSend || input).trim();
@@ -241,15 +249,20 @@ export default function AIAssistant() {
         className="flex-1 overflow-y-auto px-4 py-6 sm:px-8"
       >
         <div className="mx-auto max-w-4xl space-y-5">
-          {messages.map((m, idx) => (
-            <div
-              key={idx}
-              className={`flex gap-3 ${
-                m.role === "user"
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
-            >
+          {messages.map((m, idx) => {
+            const isLatestUserMessage =
+              m.role === "user" &&
+              idx === messages.map((msg) => msg.role).lastIndexOf("user");
+            return (
+              <div
+                key={idx}
+                ref={isLatestUserMessage ? latestUserMsgRef : undefined}
+                className={`flex gap-3 ${
+                  m.role === "user"
+                    ? "justify-end"
+                    : "justify-start"
+                }`}
+              >
               {m.role === "assistant" && (
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-900 text-teal-200 shadow-xs">
                   <Stethoscope className="h-4 w-4" />
@@ -286,7 +299,8 @@ export default function AIAssistant() {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
 
           {/* ============================================================
               TYPING INDICATOR
