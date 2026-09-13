@@ -1,6 +1,7 @@
 const express = require("express");
 const { sql, getPool } = require("../db");
 const { verifyToken, requireRole } = require("../middleware/auth");
+const { sendLabBookingEmail } = require("../utils/notify");
 
 const router = express.Router();
 
@@ -184,7 +185,7 @@ router.post("/book", async (req, res) => {
     const booking_code = shortCode("LB");
     const tracking_id = trackingCode();
 
-    const initialStatus = service_type === "home_service" ? "sample_collection_pending" : "booked";
+    const initialStatus = "pending";
 
     const bookingRequest = new sql.Request(transaction);
     const bookingResult = await bookingRequest
@@ -239,6 +240,14 @@ router.post("/book", async (req, res) => {
     }
 
     await transaction.commit();
+
+    // Send laboratory booking confirmation email with tracking ID asynchronously
+    sendLabBookingEmail({
+      booking,
+      tests: selectedTests,
+      patientEmail: patient_email,
+      patientName: patient_name,
+    }).catch((err) => console.error("Async lab booking email failed:", err.message));
 
     res.status(201).json({
       booking: {
@@ -446,13 +455,31 @@ router.post(
       for (const item of results) {
         if (!item.itemId) continue;
 
+        const rawStatus = String(item.status || item.resultStatus || "completed").toLowerCase();
+        let normalizedStatus = "completed";
+        if (rawStatus === "pending" || rawStatus === "in_progress") {
+          normalizedStatus = rawStatus;
+        } else {
+          normalizedStatus = "completed";
+        }
+
+        let remarks = item.remarks ? String(item.remarks).trim() : null;
+        if (rawStatus === "normal" || rawStatus === "abnormal") {
+          const flag = rawStatus.toUpperCase();
+          if (!remarks) {
+            remarks = `[${flag}]`;
+          } else if (!remarks.includes(`[${flag}]`)) {
+            remarks = `[${flag}] ${remarks}`;
+          }
+        }
+
         const updateRequest = new sql.Request(transaction);
         await updateRequest
           .input("itemId", sql.UniqueIdentifier, item.itemId)
           .input("bookingId", sql.UniqueIdentifier, req.params.id)
           .input("resultValue", sql.NVarChar, item.resultValue ? String(item.resultValue).trim() : null)
-          .input("resultStatus", sql.NVarChar, item.status || item.resultStatus || "completed")
-          .input("remarks", sql.NVarChar, item.remarks ? String(item.remarks).trim() : null)
+          .input("resultStatus", sql.NVarChar, normalizedStatus)
+          .input("remarks", sql.NVarChar, remarks)
           .input("normalRange", sql.NVarChar, item.normalRange ? String(item.normalRange).trim() : null)
           .input("unit", sql.NVarChar, item.unit ? String(item.unit).trim() : null)
           .query(`
@@ -463,7 +490,7 @@ router.post(
               remarks = @remarks,
               normal_range = COALESCE(@normalRange, normal_range),
               unit = COALESCE(@unit, unit),
-              completed_at = CASE WHEN @resultStatus IN ('completed', 'normal', 'abnormal') THEN SYSUTCDATETIME() ELSE completed_at END
+              completed_at = CASE WHEN @resultStatus = 'completed' THEN SYSUTCDATETIME() ELSE completed_at END
             WHERE id = @itemId AND booking_id = @bookingId
           `);
       }
@@ -475,7 +502,7 @@ router.post(
         .query(`
           SELECT
             COUNT(*) AS total,
-            SUM(CASE WHEN result_status IN ('completed', 'normal', 'abnormal') THEN 1 ELSE 0 END) AS finished
+            SUM(CASE WHEN result_status = 'completed' THEN 1 ELSE 0 END) AS finished
           FROM lab_booking_items
           WHERE booking_id = @bookingId
         `);
@@ -485,12 +512,12 @@ router.post(
         const completeBookingRequest = new sql.Request(transaction);
         await completeBookingRequest
           .input("bookingId", sql.UniqueIdentifier, req.params.id)
-          .query("UPDATE lab_bookings SET status = 'result_ready' WHERE id = @bookingId AND status != 'completed'");
+          .query("UPDATE lab_bookings SET status = 'completed' WHERE id = @bookingId");
       } else {
         const inProgressRequest = new sql.Request(transaction);
         await inProgressRequest
           .input("bookingId", sql.UniqueIdentifier, req.params.id)
-          .query("UPDATE lab_bookings SET status = 'processing' WHERE id = @bookingId AND status IN ('confirmed', 'sample_collected', 'booked')");
+          .query("UPDATE lab_bookings SET status = 'in_progress' WHERE id = @bookingId AND status IN ('pending', 'sample_collected', 'processing', 'confirmed', 'booked')");
       }
 
       await transaction.commit();

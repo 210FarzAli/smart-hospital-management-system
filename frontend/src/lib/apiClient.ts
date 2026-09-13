@@ -76,6 +76,8 @@ export const authApi = {
       | "doctor"
       | "pharmacist"
       | "laboratorist"
+      | "hr"
+      | "receptionist"
   ) =>
     request<{
       token: string;
@@ -137,6 +139,17 @@ import type {
   Doctor,
   Appointment,
   Review,
+  Employee,
+  SalaryStructure,
+  PayrollRecord,
+  HRDashboardStats,
+  ReceptionDashboardData,
+  ReceptionSearchResult,
+  EmployeeAttendance,
+  EmployeeLeave,
+  AvailableDoctor,
+  DoctorNextSlot,
+  DoctorAvailableDate,
 } from "./types";
 
 export const departmentsApi = {
@@ -368,6 +381,23 @@ export const appointmentsApi = {
           status,
         }),
       }
+    ),
+
+  availableDoctors: (date: string) =>
+    request<AvailableDoctor[]>(
+      `/appointments/available-doctors?date=${encodeURIComponent(date)}`
+    ),
+
+  nextSlot: (doctorId: string, date: string) =>
+    request<DoctorNextSlot>(
+      `/appointments/next-slot?doctorId=${encodeURIComponent(
+        doctorId
+      )}&date=${encodeURIComponent(date)}`
+    ),
+
+  doctorDates: (doctorId: string) =>
+    request<DoctorAvailableDate[]>(
+      `/appointments/doctor-dates?doctorId=${encodeURIComponent(doctorId)}`
     ),
 };
 
@@ -900,5 +930,219 @@ export const onlinePharmacyApi = {
     request<PharmacyOnlineOrder>(`/pharmacy/orders/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// HR (Human Resources) API
+// ---------------------------------------------------------------------------
+export const hrApi = {
+  dashboard: () => request<HRDashboardStats>("/hr/dashboard"),
+
+  employees: (params?: { search?: string; department_id?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.department_id) query.set("department_id", params.department_id);
+    if (params?.status) query.set("status", params.status);
+    const qs = query.toString();
+    return request<Employee[]>(`/hr/employees${qs ? `?${qs}` : ""}`);
+  },
+
+  createEmployee: (data: Partial<Employee>) =>
+    request<{ employee: Employee; message: string }>("/hr/employees", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateEmployee: (id: string, data: Partial<Employee>) =>
+    request<{ employee: Employee; message: string }>(`/hr/employees/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  salaryStructures: () => request<SalaryStructure[]>("/hr/salary-structures"),
+
+  setSalaryStructure: (data: {
+    employee_id: string;
+    basic_salary: number;
+    allowances?: number;
+    overtime_rate?: number;
+    effective_from?: string;
+  }) =>
+    request<{ salaryStructure: SalaryStructure; message: string }>("/hr/salary-structures", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  payroll: (params?: { month?: number | string; year?: number | string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.month) query.set("month", String(params.month));
+    if (params?.year) query.set("year", String(params.year));
+    if (params?.status) query.set("status", params.status);
+    const qs = query.toString();
+    return request<PayrollRecord[]>(`/hr/payroll${qs ? `?${qs}` : ""}`);
+  },
+
+  generatePayroll: (month: number, year: number) =>
+    request<{ message: string; generatedCount: number }>("/hr/payroll/generate", {
+      method: "POST",
+      body: JSON.stringify({ month, year }),
+    }),
+
+  markPayrollPaid: (id: string, status: string = "paid") =>
+    request<{ payroll: PayrollRecord; message: string }>(`/hr/payroll/${id}/pay`, {
+      method: "PUT",
+      body: JSON.stringify({ payment_status: status }),
+    }),
+
+  attendance: (params?: { date?: string; employee_id?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.date) query.set("date", params.date);
+    if (params?.employee_id) query.set("employee_id", params.employee_id);
+    const qs = query.toString();
+    return request<EmployeeAttendance[]>(`/hr/attendance${qs ? `?${qs}` : ""}`);
+  },
+
+  markAttendance: (data: {
+    employee_id: string;
+    attendance_date?: string;
+    status: string;
+    check_in_time?: string;
+    check_out_time?: string;
+    remarks?: string;
+  }) =>
+    request<{ attendance: EmployeeAttendance; message: string }>("/hr/attendance", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  leaves: (params?: { status?: string; employee_id?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.employee_id) query.set("employee_id", params.employee_id);
+    const qs = query.toString();
+    return request<EmployeeLeave[]>(`/hr/leaves${qs ? `?${qs}` : ""}`);
+  },
+
+  applyLeave: (data: {
+    employee_id: string;
+    leave_type: string;
+    start_date: string;
+    end_date: string;
+    days_count?: number;
+    reason?: string;
+  }) =>
+    request<{ leave: EmployeeLeave; message: string }>("/hr/leaves", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateLeaveStatus: (id: string, status: string) =>
+    request<{ leave: EmployeeLeave; message: string }>(`/hr/leaves/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Reception / Front Desk API
+// ---------------------------------------------------------------------------
+export const receptionApi = {
+  dashboard: () => request<ReceptionDashboardData>("/reception/dashboard"),
+
+  availableDoctors: (date: string) =>
+    request<AvailableDoctor[]>(
+      `/reception/available-doctors?date=${encodeURIComponent(date)}`
+    ),
+
+  nextSlot: (doctorId: string, date: string) =>
+    request<DoctorNextSlot>(
+      `/reception/next-slot?doctorId=${encodeURIComponent(
+        doctorId
+      )}&date=${encodeURIComponent(date)}`
+    ),
+
+  doctorDates: (doctorId: string) =>
+    request<DoctorAvailableDate[]>(
+      `/reception/doctor-dates?doctorId=${encodeURIComponent(doctorId)}`
+    ),
+
+  bookAppointment: (data: {
+    full_name: string;
+    phone: string;
+    email?: string;
+    age?: number;
+    gender?: string;
+    doctor_id: string;
+    appointment_date: string;
+    appointment_time?: string;
+    reason?: string;
+  }) =>
+    request<{ message: string; appointment: any; patient: any }>("/reception/appointment", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  registerWalkin: (data: {
+    full_name: string;
+    phone: string;
+    email?: string;
+    age?: number;
+    gender?: string;
+    doctor_id: string;
+    appointment_time?: string;
+    reason?: string;
+  }) =>
+    request<{ message: string; appointment: any; patient: any }>("/reception/walkin", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  checkIn: (appointmentId: string) =>
+    request<{ message: string; appointment: any }>(`/reception/checkin/${appointmentId}`, {
+      method: "PUT",
+    }),
+
+  search: (query: string) =>
+    request<ReceptionSearchResult>(`/reception/search?q=${encodeURIComponent(query)}`),
+
+  patientDetails: (idOrPhone: string) =>
+    request<{
+      patient: any;
+      appointments: any[];
+      labBookings: any[];
+      pharmacyOrders: any[];
+    }>(`/reception/patient/${encodeURIComponent(idOrPhone)}`),
+};
+
+// ---------------------------------------------------------------------------
+// Admin HR Management API
+// ---------------------------------------------------------------------------
+export const adminApi = {
+  hrList: () => request<any[]>("/admin/hr"),
+
+  createHR: (data: {
+    full_name: string;
+    email: string;
+    password: string;
+    phone?: string;
+    designation?: string;
+    joining_date?: string;
+  }) =>
+    request<{ user: any; message: string }>("/admin/hr", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateHR: (id: string, data: { full_name?: string; phone?: string; designation?: string }) =>
+    request<{ message: string }>(`/admin/hr/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  toggleHRStatus: (id: string, is_active: boolean) =>
+    request<{ user: any; message: string }>(`/admin/hr/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_active }),
     }),
 };

@@ -101,20 +101,23 @@ function getTodayDate() {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function isToday(dateString: string) {
-  const date = getDateOnly(dateString);
+function isToday(a: Appointment) {
+  if (a.status === "completed" || a.status === "cancelled") return false;
+  const date = getDateOnly(a.appointment_date);
   const today = getTodayDate();
   return date.getTime() === today.getTime();
 }
 
-function isUpcoming(dateString: string) {
-  const date = getDateOnly(dateString);
+function isUpcoming(a: Appointment) {
+  if (a.status === "completed" || a.status === "cancelled") return false;
+  const date = getDateOnly(a.appointment_date);
   const today = getTodayDate();
   return date.getTime() > today.getTime();
 }
 
-function isOld(dateString: string) {
-  const date = getDateOnly(dateString);
+function isOld(a: Appointment) {
+  if (a.status === "completed" || a.status === "cancelled") return true;
+  const date = getDateOnly(a.appointment_date);
   const today = getTodayDate();
   return date.getTime() < today.getTime();
 }
@@ -148,19 +151,19 @@ export default function DoctorAppointments() {
     loadAppointments();
   }, []);
 
-  const todayCount = rows.filter((a) => isToday(a.appointment_date)).length;
-  const upcomingCount = rows.filter((a) => isUpcoming(a.appointment_date)).length;
-  const oldCount = rows.filter((a) => isOld(a.appointment_date)).length;
+  const todayCount = rows.filter((a) => isToday(a)).length;
+  const upcomingCount = rows.filter((a) => isUpcoming(a)).length;
+  const oldCount = rows.filter((a) => isOld(a)).length;
 
   const filteredRows = useMemo(() => {
     let result = [...rows];
 
     if (filter === "today") {
-      result = result.filter((a) => isToday(a.appointment_date));
+      result = result.filter((a) => isToday(a));
     } else if (filter === "upcoming") {
-      result = result.filter((a) => isUpcoming(a.appointment_date));
+      result = result.filter((a) => isUpcoming(a));
     } else if (filter === "old") {
-      result = result.filter((a) => isOld(a.appointment_date));
+      result = result.filter((a) => isOld(a));
     }
 
     const q = search.trim().toLowerCase();

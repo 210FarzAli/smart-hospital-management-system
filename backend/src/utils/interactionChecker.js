@@ -242,6 +242,16 @@ const DRUG_CLASSES = {
     "sporanox",
     "fluconazole",
     "diflucan",
+    "miconazole",
+    "daktarin",
+    "monistat",
+    "voriconazole",
+    "vfend",
+    "posaconazole",
+    "noxafil",
+    "clotrimazole",
+    "canesten",
+    "lotrimin",
   ],
 };
 
@@ -494,6 +504,14 @@ const DOCUMENTED_INTERACTIONS = [
     details:
       "H2 blockers like cimetidine can reduce liver metabolism of warfarin, increasing plasma levels and bleeding tendency.",
     source: "eMedicineHealth: Histamine2 (H2)-Receptor Antagonists Interactions",
+  },
+  {
+    classes: ["warfarin", "azole_antifungal"],
+    severity: "danger",
+    risk: "Severe, Potentially Fatal Hemorrhage & Massive INR Spikes",
+    details:
+      "Azole antifungals (e.g., miconazole, fluconazole, ketoconazole, itraconazole, voriconazole) potently inhibit the hepatic CYP2C9 and CYP3A4 enzymes responsible for metabolizing warfarin. This combination markedly impairs warfarin clearance, leading to dangerously elevated International Normalized Ratio (INR) levels and severe or fatal internal hemorrhage.",
+    source: "eMedicineHealth: Warfarin Drug Interactions & Antifungal Warnings",
   },
 ];
 

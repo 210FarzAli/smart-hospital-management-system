@@ -1,4 +1,5 @@
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const { sql, getPool } = require("../db");
 const { verifyToken, requireRole } = require("../middleware/auth");
 
@@ -70,7 +71,7 @@ router.get("/", async (req, res) => {
 router.get(
   "/admin",
   verifyToken,
-  requireRole("admin"),
+  requireRole("admin", "hr"),
   async (req, res) => {
     const {
       status,
@@ -405,12 +406,12 @@ router.get("/:id", async (req, res) => {
 
 // ============================================================
 // POST /api/doctors
-// Admin only — create doctor
+// HR only — create doctor & employment record
 // ============================================================
 router.post(
   "/",
   verifyToken,
-  requireRole("admin"),
+  requireRole("hr", "no-admin"),
   async (req, res) => {
     const {
       department_id,
@@ -422,61 +423,63 @@ router.post(
       description = null,
       availability = [],
       photo_url = null,
+      email = null,
+      password = null,
+      phone = null,
+      joining_date = null,
     } = req.body;
+
+    if (!department_id || !full_name || !specialization) {
+      return res.status(400).json({ error: "Department, full name, and specialization are required." });
+    }
 
     try {
       const pool = await getPool();
 
+      // 1. If email & password provided, provision staff login account
+      let staffUserId = null;
+      if (email && password) {
+        const cleanEmail = String(email).trim().toLowerCase();
+        const existingUser = await pool
+          .request()
+          .input("email", sql.NVarChar, cleanEmail)
+          .query("SELECT id FROM staff_users WHERE email = @email");
+
+        if (existingUser.recordset.length > 0) {
+          staffUserId = existingUser.recordset[0].id;
+        } else {
+          const passwordHash = await bcrypt.hash(password, 10);
+          const userResult = await pool
+            .request()
+            .input("name", sql.NVarChar, String(full_name).trim())
+            .input("email", sql.NVarChar, cleanEmail)
+            .input("hash", sql.NVarChar, passwordHash)
+            .query(`
+              INSERT INTO staff_users (full_name, email, password_hash, role, is_active)
+              OUTPUT INSERTED.id
+              VALUES (@name, @email, @hash, 'doctor', 1)
+            `);
+          staffUserId = userResult.recordset[0].id;
+        }
+      }
+
+      // 2. Create doctor clinical profile
       const result = await pool
         .request()
-        .input(
-          "department_id",
-          sql.UniqueIdentifier,
-          department_id
-        )
-        .input(
-          "full_name",
-          sql.NVarChar,
-          full_name
-        )
-        .input(
-          "specialization",
-          sql.NVarChar,
-          specialization
-        )
-        .input(
-          "qualification",
-          sql.NVarChar,
-          qualification
-        )
-        .input(
-          "experience_years",
-          sql.Int,
-          experience_years
-        )
-        .input(
-          "consultation_fee",
-          sql.Decimal(10, 2),
-          consultation_fee
-        )
-        .input(
-          "description",
-          sql.NVarChar,
-          description
-        )
-        .input(
-          "availability",
-          sql.NVarChar,
-          JSON.stringify(availability)
-        )
-        .input(
-          "photo_url",
-          sql.NVarChar,
-          photo_url
-        )
+        .input("department_id", sql.UniqueIdentifier, department_id)
+        .input("staff_user_id", sql.UniqueIdentifier, staffUserId)
+        .input("full_name", sql.NVarChar, String(full_name).trim())
+        .input("specialization", sql.NVarChar, String(specialization).trim())
+        .input("qualification", sql.NVarChar, qualification)
+        .input("experience_years", sql.Int, Number(experience_years) || 0)
+        .input("consultation_fee", sql.Decimal(10, 2), Number(consultation_fee) || 0)
+        .input("description", sql.NVarChar, description)
+        .input("availability", sql.NVarChar, JSON.stringify(availability || []))
+        .input("photo_url", sql.NVarChar, photo_url)
         .query(`
           INSERT INTO doctors (
             department_id,
+            staff_user_id,
             full_name,
             specialization,
             qualification,
@@ -484,11 +487,13 @@ router.post(
             consultation_fee,
             description,
             availability,
-            photo_url
+            photo_url,
+            status
           )
           OUTPUT INSERTED.*
           VALUES (
             @department_id,
+            @staff_user_id,
             @full_name,
             @specialization,
             @qualification,
@@ -496,21 +501,48 @@ router.post(
             @consultation_fee,
             @description,
             @availability,
-            @photo_url
+            @photo_url,
+            'active'
           )
         `);
 
-      res.status(201).json(
-        withAvailability(
-          result.recordset[0]
-        )
-      );
+      const doctor = result.recordset[0];
+
+      // 3. Also record in employees directory for HR tracking
+      if (email || phone) {
+        try {
+          await pool
+            .request()
+            .input("staff_user_id", sql.UniqueIdentifier, staffUserId)
+            .input("full_name", sql.NVarChar, String(full_name).trim())
+            .input("phone", sql.NVarChar, phone ? String(phone).trim() : "N/A")
+            .input("email", sql.NVarChar, email ? String(email).trim().toLowerCase() : `dr.${doctor.id.slice(0, 8)}@hospital.local`)
+            .input("department_id", sql.UniqueIdentifier, department_id)
+            .input("designation", sql.NVarChar, `Consultant ${specialization}`)
+            .input("joining_date", sql.Date, joining_date || new Date().toISOString().slice(0, 10))
+            .input("qualification", sql.NVarChar, qualification)
+            .query(`
+              IF NOT EXISTS (SELECT id FROM employees WHERE email = @email OR (full_name = @full_name AND department_id = @department_id))
+              BEGIN
+                INSERT INTO employees (
+                  staff_user_id, full_name, phone, email, department_id,
+                  designation, joining_date, employment_status, qualification
+                )
+                VALUES (
+                  @staff_user_id, @full_name, @phone, @email, @department_id,
+                  @designation, @joining_date, 'active', @qualification
+                );
+              END
+            `);
+        } catch (empErr) {
+          console.error("Doctor employee record creation notice:", empErr.message);
+        }
+      }
+
+      res.status(201).json(withAvailability(doctor));
     } catch (err) {
       console.error(err);
-
-      res.status(500).json({
-        error: "Failed to create doctor.",
-      });
+      res.status(500).json({ error: "Failed to create doctor employment record." });
     }
   }
 );
@@ -518,60 +550,56 @@ router.post(
 // ============================================================
 // PUT /api/doctors/:id
 //
-// Admin:
-// - Can update any doctor
+// HR:
+// - Can update any doctor's employment/profile
 // - Can activate/deactivate doctor
 //
 // Doctor:
 // - Can update their own profile
 // - Cannot change status
 //
-// IMPORTANT:
-// This NEVER permanently deletes a doctor.
-// "Delete" from the admin UI should send status = inactive.
+// Admin:
+// - Cannot modify doctor records (managed by HR)
 // ============================================================
 router.put(
   "/:id",
   verifyToken,
   async (req, res) => {
-    const isAdmin =
-      req.user.role === "admin";
-
+    const isHR = req.user.role === "hr";
     const isOwnDoctor =
       req.user.role === "doctor" &&
       req.user.doctorId === req.params.id;
 
-    // Only Admin can update another doctor.
-    if (!isAdmin && !isOwnDoctor) {
+    if (!isHR && !isOwnDoctor) {
+      if (req.user.role === "admin") {
+        return res.status(403).json({
+          error: "Doctor employment and profile management is restricted to Human Resources (HR).",
+        });
+      }
       return res.status(403).json({
-        error:
-          "You can only update your own profile.",
+        error: "You can only update your own profile.",
       });
     }
 
     const fields = [
-  "department_id",
-  "full_name",
-  "specialization",
-  "qualification",
-  "experience_years",
-  "consultation_fee",
-  "description",
-  "photo_url",
-  "availability",
-];
+      "department_id",
+      "full_name",
+      "specialization",
+      "qualification",
+      "experience_years",
+      "consultation_fee",
+      "description",
+      "photo_url",
+      "availability",
+    ];
 
-    // Only Admin can change status.
-    if (
-      isAdmin &&
-      req.body.status !== undefined
-    ) {
+    // Only HR can change status.
+    if (isHR && req.body.status !== undefined) {
       fields.push("status");
     }
 
     const updates = fields.filter(
-      (field) =>
-        req.body[field] !== undefined
+      (field) => req.body[field] !== undefined
     );
 
     if (!updates.length) {
@@ -583,14 +611,11 @@ router.put(
     // Validate status.
     if (
       req.body.status !== undefined &&
-      isAdmin &&
-      !["active", "inactive"].includes(
-        req.body.status
-      )
+      isHR &&
+      !["active", "inactive"].includes(req.body.status)
     ) {
       return res.status(400).json({
-        error:
-          "Status must be active or inactive.",
+        error: "Status must be active or inactive.",
       });
     }
 

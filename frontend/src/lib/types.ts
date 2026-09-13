@@ -198,3 +198,224 @@ export interface PharmacyOnlineOrder {
   created_at: string;
   updated_at: string;
 }
+
+export interface Employee {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  department_id: string | null;
+  department_name?: string;
+  designation: string;
+  joining_date: string;
+  employment_status: "active" | "on_leave" | "terminated";
+  qualification: string | null;
+  emergency_contact: string | null;
+  created_at?: string;
+  basic_salary?: number;
+  allowances?: number;
+  overtime_rate?: number;
+}
+
+export interface SalaryStructure {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  designation?: string;
+  department_name?: string;
+  basic_salary: number;
+  allowances: number;
+  overtime_rate: number;
+  effective_from: string;
+  created_at?: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  designation: string;
+  department_name: string;
+  period_month: number;
+  period_year: number;
+  basic_salary: number;
+  allowances: number;
+  overtime: number;
+  bonuses: number;
+  deductions: number;
+  net_salary: number;
+  payment_status: "pending" | "paid" | "processed";
+  paid_at: string | null;
+  created_at: string;
+}
+
+export interface HRDashboardStats {
+  stats: {
+    total_employees: number;
+    active_employees: number;
+    on_leave_employees: number;
+    terminated_employees: number;
+  };
+  departmentBreakdown: {
+    id: string;
+    name: string;
+    employee_count: number;
+  }[];
+  latestPayroll: {
+    period_month: number;
+    period_year: number;
+    payroll_count: number;
+    total_basic: number;
+    total_allowances: number;
+    total_net_payout: number;
+    paid_count: number;
+    pending_count: number;
+  } | null;
+  recentHires: {
+    id: string;
+    full_name: string;
+    designation: string;
+    employment_status: string;
+    joining_date: string;
+    department_name: string;
+  }[];
+}
+
+export interface ReceptionDashboardData {
+  stats: {
+    total_today: number;
+    confirmed_today: number;
+    checked_in_today: number;
+    completed_today: number;
+    cancelled_today: number;
+  };
+  labSummary?: {
+    total_reports: number;
+    pending_reports: number;
+    in_progress_reports: number;
+    completed_reports: number;
+  };
+  queue: {
+    id: string;
+    appointment_code: string;
+    appointment_date: string;
+    appointment_time: string;
+    status: string;
+    reason: string | null;
+    patient_id: string;
+    patient_code: string;
+    patient_name: string;
+    patient_phone: string;
+    patient_email: string | null;
+    patient_age: number | null;
+    doctor_id: string;
+    doctor_name: string;
+    specialization: string;
+    consultation_fee: number;
+    department_name: string;
+  }[];
+  doctors: {
+    id: string;
+    full_name: string;
+    specialization: string;
+    consultation_fee: number;
+    availability: any;
+    department_name: string;
+    current_status?: string;
+    shift_hours?: string;
+    schedules?: any[];
+    day_shift?: any;
+  }[];
+  currentDate: string;
+}
+
+export interface ReceptionSearchResult {
+  patients?: any[];
+  doctors?: any[];
+  appointments: any[];
+  labBookings: any[];
+  pharmacyOrders: any[];
+  medicines?: any[];
+  searchTerm: string;
+}
+
+export interface EmployeeAttendance {
+  id: string;
+  employee_id: string;
+  attendance_date: string;
+  status: "present" | "absent" | "late" | "half_day" | "on_leave";
+  check_in_time?: string;
+  check_out_time?: string;
+  remarks?: string;
+  employee_name: string;
+  employee_phone: string;
+  designation: string;
+  department_name: string;
+}
+
+export interface EmployeeLeave {
+  id: string;
+  employee_id: string;
+  leave_type: "casual" | "sick" | "annual" | "unpaid" | "maternity" | "emergency";
+  start_date: string;
+  end_date: string;
+  days_count: number;
+  reason?: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  created_at: string;
+  employee_name: string;
+  employee_phone: string;
+  designation: string;
+  department_name: string;
+}
+
+export interface AvailableDoctor {
+  id: string;
+  full_name: string;
+  specialization: string;
+  consultation_fee: number;
+  department_id?: string;
+  department_name?: string;
+  shift?: {
+    day: string;
+    start_time: string;
+    end_time: string;
+    label: string;
+  };
+  next_available_time: string;
+  next_available_time_formatted: string;
+  available_slots_count: number;
+  total_slots: number;
+}
+
+export interface DoctorNextSlot {
+  available: boolean;
+  reason?: string;
+  shift?: {
+    day: string;
+    start_time: string;
+    end_time: string;
+    label: string;
+  };
+  nextSlot: string | null;
+  nextSlotFormatted: string | null;
+  availableSlotsCount: number;
+  allSlots: string[];
+  totalSlots: number;
+  bookedSlotsCount: number;
+}
+
+export interface DoctorAvailableDate {
+  date: string;
+  day: string;
+  formatted_date: string;
+  shift?: {
+    day: string;
+    start_time: string;
+    end_time: string;
+    label: string;
+  };
+  next_available_time: string;
+  next_available_time_formatted: string;
+  available_slots_count: number;
+}

@@ -1,5 +1,6 @@
 const { sql } = require("../db");
 const { checkDrugInteractions } = require("./interactionChecker");
+const { sendOnlinePharmacyOrderEmail, sendLabBookingEmail } = require("./notify");
 
 function generateOrderCode() {
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -205,7 +206,7 @@ async function createPharmacyOrder(
         OUTPUT INSERTED.*
         VALUES (
           @order_code, @customer_name, @customer_phone, @customer_email,
-          @delivery_address, @notes, @total_amount, 'pending'
+          @delivery_address, @notes, @total_amount, 'confirmed'
         )
       `);
 
@@ -227,15 +228,45 @@ async function createPharmacyOrder(
             @order_id, @medicine_id, @medicine_name, @quantity, @unit_price, @line_total
           )
         `);
+
+      // Deduct stock using FEFO
+      let rem = line.quantity;
+      const batchesRes = await new sql.Request(transaction)
+        .input("medId", sql.UniqueIdentifier, line.medicine_id)
+        .query(`
+          SELECT id, quantity
+          FROM medicine_batches
+          WHERE medicine_id = @medId AND quantity > 0
+          ORDER BY expiry_date ASC, id ASC
+        `);
+      for (const b of batchesRes.recordset) {
+        if (rem <= 0) break;
+        const deduct = Math.min(Number(b.quantity), rem);
+        await new sql.Request(transaction)
+          .input("batchId", sql.UniqueIdentifier, b.id)
+          .input("deductQty", sql.Int, deduct)
+          .query(`UPDATE medicine_batches SET quantity = quantity - @deductQty WHERE id = @batchId`);
+        rem -= deduct;
+      }
     }
 
     await transaction.commit();
+
+    if (order.customer_email) {
+      sendOnlinePharmacyOrderEmail({
+        order,
+        items: validatedItems,
+        customerEmail: order.customer_email,
+        customerName: order.customer_name,
+      }).catch((err) => console.error("Assistant order email failed:", err.message));
+    }
 
     return {
       order_id: order.id,
       order_code: order.order_code,
       customer_name: order.customer_name,
       customer_phone: order.customer_phone,
+      customer_email: order.customer_email,
       delivery_address: order.delivery_address,
       total_amount: Number(order.total_amount),
       status: order.status,
@@ -439,7 +470,7 @@ async function createLabBooking(
     const totalAmount = selectedTests.reduce((sum, t) => sum + Number(t.price), 0);
     const booking_code = generateBookingCode("LB");
     const tracking_id = generateLabTrackingCode();
-    const initialStatus = service_type === "home_service" ? "sample_collection_pending" : "booked";
+    const initialStatus = "pending";
 
     const bookingRequest = new sql.Request(transaction);
     const bookingResult = await bookingRequest
@@ -492,6 +523,15 @@ async function createLabBooking(
     }
 
     await transaction.commit();
+
+    if (booking.patient_email) {
+      sendLabBookingEmail({
+        booking,
+        tests: selectedTests,
+        patientEmail: booking.patient_email,
+        patientName: booking.patient_name,
+      }).catch((err) => console.error("Assistant lab booking email failed:", err.message));
+    }
 
     return {
       booking_id: booking.id,

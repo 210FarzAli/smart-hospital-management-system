@@ -33,10 +33,13 @@ export default function LaboratoryDashboard() {
     load();
   }, []);
 
-  const pendingCount = bookings.filter((b) => b.status === "pending").length;
-  const sampleCollectedCount = bookings.filter((b) => b.status === "sample_collected").length;
-  const inProgressCount = bookings.filter((b) => b.status === "in_progress").length;
-  const completedCount = bookings.filter((b) => b.status === "completed").length;
+  const normStatus = (s: string) =>
+    s === "booked" || s === "sample_collection_pending" ? "pending" : s === "processing" ? "in_progress" : s;
+
+  const pendingCount = bookings.filter((b) => normStatus(b.status) === "pending").length;
+  const sampleCollectedCount = bookings.filter((b) => normStatus(b.status) === "sample_collected").length;
+  const inProgressCount = bookings.filter((b) => normStatus(b.status) === "in_progress").length;
+  const completedCount = bookings.filter((b) => normStatus(b.status) === "completed").length;
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {

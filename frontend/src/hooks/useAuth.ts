@@ -27,9 +27,15 @@ export function useAuth(requiredRole?: string) {
         // Confirm the token is still valid against the backend.
         const { user } = await authApi.me();
         if (isMounted) {
+          const roleAllowed =
+            !requiredRole ||
+            user.role === requiredRole ||
+            user.role === "admin" ||
+            (["laboratory", "laboratorist"].includes(user.role) && ["laboratory", "laboratorist"].includes(requiredRole)) ||
+            (["reception", "receptionist"].includes(user.role) && ["reception", "receptionist"].includes(requiredRole));
           setState({
             loading: false,
-            staffUser: !requiredRole || user.role === requiredRole || user.role === "admin" ? user : null,
+            staffUser: roleAllowed ? user : null,
           });
         }
       } catch {

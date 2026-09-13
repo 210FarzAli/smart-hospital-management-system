@@ -19,6 +19,7 @@ const {
   handleMedicineInteraction,
   handlePharmacyFlow,
   handleLabFlow,
+  parseNaturalDate: parseNaturalDateFromHandler,
 } = require("../utils/assistantHandlers");
 
 const router = express.Router();
@@ -50,12 +51,27 @@ function getSession(sessionToken) {
       booking: null,
       pharmacyOrder: null,
       labBooking: null,
+      customerProfile: {
+        name: null,
+        phone: null,
+        email: null,
+        address: null,
+      },
       doctorOptions: [],
       doctorSuggestionPending: false,
       updatedAt: now,
     };
 
     sessions.set(sessionToken, session);
+  }
+
+  if (!session.customerProfile) {
+    session.customerProfile = {
+      name: null,
+      phone: null,
+      email: null,
+      address: null,
+    };
   }
 
   session.updatedAt = now;
@@ -1041,6 +1057,11 @@ function isConfirmationMessage(
 function parseNaturalDate(
   message
 ) {
+  const handlerParsed = parseNaturalDateFromHandler(message);
+  if (handlerParsed) {
+    return handlerParsed;
+  }
+
   const text =
     normalizeText(message);
 

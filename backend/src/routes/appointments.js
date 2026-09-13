@@ -2,6 +2,13 @@ const express = require("express");
 const { sql, getPool } = require("../db");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { sendAppointmentEmail } = require("../utils/notify");
+const {
+  getAvailableDoctorsForDate,
+  getNextAvailableAppointmentTime,
+  getDoctorAvailableDates,
+  validateAppointmentSlot,
+  formatTimeTo12Hour,
+} = require("../utils/scheduling");
 
 const router = express.Router();
 
@@ -237,21 +244,56 @@ function addShiftToAppointment(appointment) {
 }
 
 /* =========================================================
+   SCHEDULING SERVICE ENDPOINTS (Single Source of Truth)
+========================================================= */
+
+router.get("/available-doctors", async (req, res) => {
+  const { date } = req.query;
+  if (!date || !isValidDate(date)) {
+    return res.status(400).json({ error: "Valid appointment date (YYYY-MM-DD) is required." });
+  }
+  try {
+    const pool = await getPool();
+    const doctors = await getAvailableDoctorsForDate(pool, date);
+    res.json(doctors);
+  } catch (err) {
+    console.error("Failed to load available doctors:", err);
+    res.status(500).json({ error: "Failed to load available doctors for selected date." });
+  }
+});
+
+router.get("/next-slot", async (req, res) => {
+  const { doctorId, date } = req.query;
+  if (!doctorId || !date || !isValidDate(date)) {
+    return res.status(400).json({ error: "doctorId and valid date (YYYY-MM-DD) are required." });
+  }
+  try {
+    const pool = await getPool();
+    const slotInfo = await getNextAvailableAppointmentTime(pool, doctorId, date);
+    res.json(slotInfo);
+  } catch (err) {
+    console.error("Failed to calculate next slot:", err);
+    res.status(500).json({ error: "Failed to calculate next available appointment slot." });
+  }
+});
+
+router.get("/doctor-dates", async (req, res) => {
+  const { doctorId } = req.query;
+  if (!doctorId) {
+    return res.status(400).json({ error: "doctorId is required." });
+  }
+  try {
+    const pool = await getPool();
+    const dates = await getDoctorAvailableDates(pool, doctorId);
+    res.json(dates);
+  } catch (err) {
+    console.error("Failed to load doctor available dates:", err);
+    res.status(500).json({ error: "Failed to load doctor available dates." });
+  }
+});
+
+/* =========================================================
    GET /api/appointments/availability
-
-   APPOINTMENT MODEL:
-
-   One doctor's working period = ONE BOOKABLE SHIFT.
-
-   Example:
-
-   Monday 09:00 - 17:00
-
-   This is one bookable shift.
-
-   Multiple patients can book the same shift.
-
-   Existing appointments NEVER make the shift unavailable.
 ========================================================= */
 
 router.get("/availability", async (req, res) => {
@@ -433,97 +475,26 @@ router.post("/", async (req, res) => {
     const pool = await getPool();
 
     /* -----------------------------------------------------
-       Get exact doctor + department
+       Validate Doctor Schedule & Slot Availability (Single Source of Truth)
     ----------------------------------------------------- */
 
-    const doctorResult = await pool
-      .request()
-      .input("doctorId", sql.UniqueIdentifier, doctor_id)
-      .query(`
-        SELECT
-          doc.*,
-          dep.name AS department_name
-        FROM doctors doc
-        INNER JOIN departments dep
-          ON dep.id = doc.department_id
-        WHERE doc.id = @doctorId
-      `);
-
-    const doctor = doctorResult.recordset[0];
-
-    if (!doctor) {
-      return res.status(404).json({
-        error: "Doctor not found.",
-      });
-    }
-
-    if (doctor.status !== "active") {
-      return res.status(400).json({
-        error: "Doctor is not active.",
-      });
-    }
-
-    /* -----------------------------------------------------
-       Get doctor's shift for selected date
-    ----------------------------------------------------- */
-
-    const requestedDay = getDayName(appointment_date);
-
-    const shift = getDoctorShiftForDate(
-      doctor.availability,
-      appointment_date
+    const validation = await validateAppointmentSlot(
+      pool,
+      doctor_id,
+      appointment_date,
+      appointment_time || null
     );
 
-    if (!shift) {
-      return res.status(400).json({
-        error: `${doctor.full_name} does not work on ${requestedDay}.`,
+    if (!validation.valid) {
+      return res.status(validation.code || 400).json({
+        error: validation.error,
+        nextAvailableTime: validation.nextAvailableTime || null,
       });
     }
 
-    /* -----------------------------------------------------
-       Optional appointment_time
-
-       This exists only for compatibility with older
-       frontend/AI code.
-
-       If supplied:
-
-       12:00 with 09:00-17:00
-       -> accepted as identifying the shift.
-
-       20:00 with 09:00-17:00
-       -> rejected.
-
-       It is NEVER stored as the patient's exact
-       consultation time.
-
-       The database always stores shift.start_time.
-    ----------------------------------------------------- */
-
-    if (appointment_time) {
-      const normalizedRequestedTime =
-        normalizeTime(appointment_time);
-
-      if (!normalizedRequestedTime) {
-        return res.status(400).json({
-          error: "Invalid appointment time.",
-        });
-      }
-
-      if (
-        !timeFallsWithinShift(
-          normalizedRequestedTime,
-          shift.start_time,
-          shift.end_time
-        )
-      ) {
-        return res.status(400).json({
-          error: `${normalizedRequestedTime} is outside the doctor's working shift of ${shift.start_time} - ${shift.end_time}.`,
-        });
-      }
-    }
-
-    const storedAppointmentTime = shift.start_time;
+    const doctor = validation.doctor;
+    const shift = validation.shift;
+    const storedAppointmentTime = validation.assignedTime;
 
     /* -----------------------------------------------------
        CREATE PATIENT

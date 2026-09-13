@@ -20,7 +20,27 @@ function verifyToken(req, res, next) {
 // login screen in the frontend; this is the matching server-side check.
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return res.status(403).json({ error: "You do not have access to this resource." });
+    }
+    const userRole = req.user.role;
+    const disallowAdmin = roles.includes("no-admin");
+    const allowedRoles = roles.filter((r) => r !== "no-admin");
+
+    if (userRole === "admin" && disallowAdmin) {
+      return res.status(403).json({
+        error: "Administrator does not have authority for this action. Staff employment is managed exclusively by Human Resources (HR).",
+      });
+    }
+
+    const hasRole = allowedRoles.some((r) => {
+      if (r === userRole) return true;
+      if (userRole === "admin" && !disallowAdmin) return true;
+      if (["laboratory", "laboratorist"].includes(userRole) && ["laboratory", "laboratorist"].includes(r)) return true;
+      if (["reception", "receptionist"].includes(userRole) && ["reception", "receptionist"].includes(r)) return true;
+      return false;
+    });
+    if (!hasRole) {
       return res.status(403).json({ error: "You do not have access to this resource." });
     }
     next();

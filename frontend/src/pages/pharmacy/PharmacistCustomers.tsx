@@ -166,6 +166,7 @@ export default function PharmacistCustomers() {
               <tr>
                 <th className="px-5 py-3.5">Customer & ID</th>
                 <th className="px-5 py-3.5">Contact Details</th>
+                <th className="px-5 py-3.5">Channel</th>
                 <th className="px-5 py-3.5">Total Orders</th>
                 <th className="px-5 py-3.5">Lifetime Spend</th>
                 <th className="px-5 py-3.5 text-right">Last Purchase</th>
@@ -174,14 +175,14 @@ export default function PharmacistCustomers() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400">
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-700 border-t-transparent" />
                     <p className="mt-2">Loading customer accounts...</p>
                   </td>
                 </tr>
               ) : filteredCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">
+                  <td colSpan={6} className="p-8 text-center text-slate-500">
                     No customers found matching search criteria.
                   </td>
                 </tr>
@@ -212,6 +213,18 @@ export default function PharmacistCustomers() {
                       <div className="text-[10px] text-slate-400">
                         {c.email || "—"}
                       </div>
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          (c as any).channel === "ONLINE"
+                            ? "bg-blue-50 text-blue-800 ring-1 ring-blue-200"
+                            : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                        }`}
+                      >
+                        {(c as any).channel || "WALK-IN / PHYSICAL"}
+                      </span>
                     </td>
 
                     <td className="px-5 py-4">

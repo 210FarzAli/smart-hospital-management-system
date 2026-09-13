@@ -95,6 +95,21 @@ async function ensureMigrations() {
           'in_progress'
         )
       );
+
+      -- Migrate legacy 'booked' and 'sample_collection_pending' records to 'pending' to align with Laboratory staff workflow
+      UPDATE lab_bookings
+      SET status = 'pending'
+      WHERE status IN ('booked', 'sample_collection_pending');
+
+      -- Update default constraint on status to 'pending'
+      DECLARE @dfName NVARCHAR(128);
+      SELECT @dfName = d.name
+      FROM sys.default_constraints d
+      JOIN sys.columns c ON d.parent_object_id = c.object_id AND d.parent_column_id = c.column_id
+      WHERE d.parent_object_id = OBJECT_ID('lab_bookings') AND c.name = 'status';
+      IF @dfName IS NOT NULL
+        EXEC('ALTER TABLE lab_bookings DROP CONSTRAINT ' + @dfName);
+      ALTER TABLE lab_bookings ADD CONSTRAINT DF_lab_bookings_status DEFAULT 'pending' FOR status;
     `);
 
     // 3. lab_booking_items
@@ -667,6 +682,57 @@ async function ensureMigrations() {
       }
     }
     console.log("Pharmacy essential medicines & inventory verified.");
+
+    // 8. employee_attendance
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'employee_attendance')
+      BEGIN
+        CREATE TABLE employee_attendance (
+          id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+          employee_id UNIQUEIDENTIFIER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+          attendance_date DATE NOT NULL,
+          status NVARCHAR(20) NOT NULL DEFAULT 'present' CHECK (status IN ('present', 'absent', 'late', 'half_day', 'on_leave')),
+          check_in_time NVARCHAR(20) NULL,
+          check_out_time NVARCHAR(20) NULL,
+          remarks NVARCHAR(255) NULL,
+          created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+          CONSTRAINT UQ_employee_date UNIQUE (employee_id, attendance_date)
+        );
+        CREATE INDEX idx_attendance_date ON employee_attendance(attendance_date);
+      END
+    `);
+
+    // 9. employee_leaves
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'employee_leaves')
+      BEGIN
+        CREATE TABLE employee_leaves (
+          id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+          employee_id UNIQUEIDENTIFIER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+          leave_type NVARCHAR(50) NOT NULL CHECK (leave_type IN ('casual', 'sick', 'annual', 'unpaid', 'maternity', 'emergency')),
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          days_count INT NOT NULL DEFAULT 1,
+          reason NVARCHAR(500) NULL,
+          status NVARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+          approved_by UNIQUEIDENTIFIER NULL REFERENCES staff_users(id),
+          created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
+        CREATE INDEX idx_leaves_employee ON employee_leaves(employee_id);
+      END
+    `);
+    console.log("HR employee attendance & leaves tables verified.");
+
+    // 10. Ensure patients table has gender column
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'patients' AND COLUMN_NAME = 'gender'
+      )
+      BEGIN
+        ALTER TABLE patients ADD gender NVARCHAR(20) NULL;
+      END
+    `);
 
     console.log("Database migrations & schema verification completed successfully.");
   } catch (err) {

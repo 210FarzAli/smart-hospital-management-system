@@ -88,8 +88,12 @@ export default function LaboratoryAppointments() {
     }
   };
 
+  const normStatus = (s: string) =>
+    s === "booked" || s === "sample_collection_pending" ? "pending" : s === "processing" ? "in_progress" : s;
+
   const filtered = bookings.filter((b) => {
-    const matchStatus = statusFilter === "all" || b.status === statusFilter;
+    const st = normStatus(b.status);
+    const matchStatus = statusFilter === "all" || st === statusFilter;
     const matchType = typeFilter === "all" || b.service_type === typeFilter;
     const q = search.toLowerCase();
     const matchSearch =
@@ -240,51 +244,77 @@ export default function LaboratoryAppointments() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          b.status === "completed"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : b.status === "in_progress"
-                            ? "bg-blue-100 text-blue-800"
-                            : b.status === "sample_collected"
-                            ? "bg-purple-100 text-purple-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {b.status.replace("_", " ")}
-                      </span>
+                      {(() => {
+                        const st = normStatus(b.status);
+                        return (
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              st === "completed"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : st === "in_progress"
+                                ? "bg-blue-100 text-blue-800"
+                                : st === "sample_collected"
+                                ? "bg-purple-100 text-purple-800"
+                                : st === "cancelled"
+                                ? "bg-rose-100 text-rose-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {st.replace("_", " ")}
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     <td className="px-5 py-4 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        {b.status === "pending" && (
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateStatus(b.id, "sample_collected")}
-                            className="rounded-lg bg-teal-800 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-teal-700 transition"
-                          >
-                            Mark Collected
-                          </button>
-                        )}
-                        {b.status === "sample_collected" && (
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateStatus(b.id, "in_progress")}
-                            className="rounded-lg bg-blue-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-600 transition"
-                          >
-                            Start Analysis
-                          </button>
-                        )}
-                        {b.status === "in_progress" && (
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateStatus(b.id, "completed")}
-                            className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-600 transition"
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-                      </div>
+                      {(() => {
+                        const st = normStatus(b.status);
+                        return (
+                          <div className="inline-flex items-center gap-1.5">
+                            {st === "pending" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateStatus(b.id, "sample_collected")}
+                                className="rounded-lg bg-teal-800 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-teal-700 transition"
+                              >
+                                Mark Collected
+                              </button>
+                            )}
+                            {st === "sample_collected" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateStatus(b.id, "in_progress")}
+                                className="rounded-lg bg-blue-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-600 transition"
+                              >
+                                Start Analysis
+                              </button>
+                            )}
+                            {st === "in_progress" && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateStatus(b.id, "completed")}
+                                className="rounded-lg bg-emerald-700 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-600 transition"
+                              >
+                                Mark Completed
+                              </button>
+                            )}
+                            {st !== "completed" && st !== "cancelled" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to cancel this booking?")) {
+                                    handleUpdateStatus(b.id, "cancelled");
+                                  }
+                                }}
+                                className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-700 transition"
+                                title="Cancel Booking"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))

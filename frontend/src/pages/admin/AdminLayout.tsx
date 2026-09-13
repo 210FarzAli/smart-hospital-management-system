@@ -10,6 +10,7 @@ import {
   LogOut,
   Hospital,
   User,
+  Users,
   ShieldCheck,
   Menu,
   X,
@@ -19,7 +20,8 @@ import {
 
 const links = [
   { to: "/admin/dashboard", label: "Overview", icon: Activity },
-  { to: "/admin/doctors", label: "Doctors Directory", icon: Stethoscope },
+  { to: "/admin/hr", label: "Manage HR Staff", icon: Users },
+  { to: "/admin/doctors", label: "Doctors Directory (Read-Only)", icon: Stethoscope },
   { to: "/admin/appointments", label: "Appointments", icon: Calendar },
   { to: "/admin/laboratory", label: "Laboratory Tests", icon: FileText },
   { to: "/admin/pharmacy", label: "Pharmacy Stock", icon: Pill },

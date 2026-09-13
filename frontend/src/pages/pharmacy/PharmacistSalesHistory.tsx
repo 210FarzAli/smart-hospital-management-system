@@ -188,12 +188,13 @@ export default function PharmacistSalesHistory() {
               <tr>
                 <th className="px-5 py-3.5">Invoice Code</th>
                 <th className="px-5 py-3.5">Customer</th>
+                <th className="px-5 py-3.5">Channel</th>
                 <th className="px-5 py-3.5">Referring Doctor</th>
-                <th className="px-5 py-3.5">Type</th>
                 <th className="px-5 py-3.5">Total Amount</th>
                 <th className="px-5 py-3.5">Dispensed By</th>
-                <th className="px-5 py-3.5">Receipt Token & Email</th>
-                <th className="px-5 py-3.5 text-right">Timestamp</th>
+                <th className="px-5 py-3.5">Receipt Token</th>
+                <th className="px-5 py-3.5">Email Status</th>
+                <th className="px-5 py-3.5 text-right">Date & Time</th>
               </tr>
             </thead>
 
@@ -201,7 +202,7 @@ export default function PharmacistSalesHistory() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="p-8 text-center text-slate-400"
                   >
                     <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-teal-700 border-t-transparent" />
@@ -214,110 +215,128 @@ export default function PharmacistSalesHistory() {
               ) : filteredSales.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="p-8 text-center text-slate-500"
                   >
                     No sales found matching your criteria.
                   </td>
                 </tr>
               ) : (
-                filteredSales.map((sale) => (
-                  <tr
-                    key={sale.id}
-                    className="transition-colors hover:bg-slate-50/80"
-                  >
-                    {/* Invoice */}
-                    <td className="px-5 py-4">
-                      <div className="font-mono text-xs font-bold text-teal-950">
-                        {sale.sale_code}
-                      </div>
+                filteredSales.map((sale) => {
+                  const channel =
+                    sale.sale_type === "online"
+                      ? "ONLINE"
+                      : sale.sale_type === "prescription" || sale.referring_doctor
+                      ? "DOCTOR-REFERRED / PRESCRIBED"
+                      : "WALK-IN / PHYSICAL";
 
-                      <div className="font-mono text-[10px] text-slate-400">
-                        ID: {sale.id.slice(0, 8)}
-                      </div>
-                    </td>
-
-                    {/* Customer */}
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-slate-900">
-                        {sale.customer_name || "Walk-in Customer"}
-                      </div>
-
-                      <div className="text-[10px] text-slate-400">
-                        {sale.customer_phone ||
-                          sale.customer_email ||
-                          "No contact info"}
-                      </div>
-                    </td>
-
-                    {/* Referring Doctor */}
-                    <td className="px-5 py-4">
-                      {sale.referring_doctor ? (
-                        <>
-                          <div className="font-bold text-slate-900">
-                            {sale.referring_doctor}
-                          </div>
-
-                          <div className="mt-0.5 text-[10px] text-teal-700">
-                            Hospital Referral
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-slate-400">
-                          Walk-in / N/A
+                  return (
+                    <tr
+                      key={sale.id}
+                      className="transition-colors hover:bg-slate-50/80"
+                    >
+                      {/* Invoice */}
+                      <td className="px-5 py-4">
+                        <div className="font-mono text-xs font-bold text-teal-950">
+                          {sale.sale_code}
                         </div>
-                      )}
-                    </td>
 
-                    {/* Sale Type */}
-                    <td className="px-5 py-4">
-                      <span className="inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold capitalize text-slate-700">
-                        {sale.sale_type?.replace("_", " ") ||
-                          "Walk-in"}
-                      </span>
-                    </td>
+                        <div className="font-mono text-[10px] text-slate-400">
+                          ID: {sale.id.slice(0, 8)}
+                        </div>
+                      </td>
 
-                    {/* Amount */}
-                    <td className="px-5 py-4 font-extrabold text-teal-950">
-                      {formatMoney(sale.total_amount)}
-                    </td>
+                      {/* Customer */}
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-900">
+                          {sale.customer_name || "Walk-in Customer"}
+                        </div>
 
-                    {/* Dispensed By */}
-                    <td className="px-5 py-4 text-slate-700">
-                      {sale.sold_by || "Staff Pharmacist"}
-                    </td>
+                        <div className="text-[10px] text-slate-400">
+                          {sale.customer_phone ||
+                            sale.customer_email ||
+                            "No contact info"}
+                        </div>
+                      </td>
 
-                    {/* Receipt / Email */}
-                    <td className="px-5 py-4">
-                      <div className="font-mono text-xs font-semibold text-slate-800">
-                        {sale.receipt_code || "—"}
-                      </div>
+                      {/* Channel */}
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            channel === "ONLINE"
+                              ? "bg-blue-50 text-blue-800 ring-1 ring-blue-200"
+                              : channel === "DOCTOR-REFERRED / PRESCRIBED"
+                              ? "bg-purple-50 text-purple-800 ring-1 ring-purple-200"
+                              : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                          }`}
+                        >
+                          {channel}
+                        </span>
+                      </td>
 
-                      <div className="mt-0.5">
+                      {/* Referring Doctor */}
+                      <td className="px-5 py-4">
+                        {sale.referring_doctor ? (
+                          <>
+                            <div className="font-bold text-slate-900">
+                              {sale.referring_doctor}
+                            </div>
+
+                            <div className="mt-0.5 text-[10px] text-teal-700">
+                              Hospital Referral
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-slate-400">
+                            Walk-in / N/A
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Amount */}
+                      <td className="px-5 py-4 font-extrabold text-teal-950">
+                        {formatMoney(sale.total_amount)}
+                      </td>
+
+                      {/* Dispensed By */}
+                      <td className="px-5 py-4 text-slate-700">
+                        {sale.sold_by || "Staff Pharmacist"}
+                      </td>
+
+                      {/* Receipt Token */}
+                      <td className="px-5 py-4">
+                        <div className="font-mono text-xs font-semibold text-slate-800">
+                          {sale.receipt_code || "—"}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Ref Token</div>
+                      </td>
+
+                      {/* Email Status */}
+                      <td className="px-5 py-4">
                         {sale.email_status === "sent" ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
                             <CheckCircle className="h-3 w-3" />
                             Receipt Emailed
                           </span>
                         ) : sale.email_status === "failed" ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-700">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-200">
                             <AlertCircle className="h-3 w-3" />
                             Email Failed
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-400">
-                            No Email Dispatched
+                            Not Requested
                           </span>
                         )}
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Timestamp */}
-                    <td className="whitespace-nowrap px-5 py-4 text-right text-slate-500">
-                      {formatDate(sale.created_at)}
-                    </td>
-                  </tr>
-                ))
+                      {/* Timestamp */}
+                      <td className="whitespace-nowrap px-5 py-4 text-right text-slate-500">
+                        {formatDate(sale.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

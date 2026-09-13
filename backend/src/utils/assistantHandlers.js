@@ -38,7 +38,6 @@ const EMERGENCY_KEYWORDS = [
   "poisoning",
   "head injury",
   "severe trauma",
-  // Urdu / Roman Urdu
   "seene me dard",
   "seene mein dard",
   "dil ka daura",
@@ -58,21 +57,21 @@ function checkEmergency(message, language = "english") {
   if (language === "urdu") {
     return `🚨 **ہنگامی الرٹ (Emergency Alert)**
 آپ کی بیان کردہ علامات فوری طبی امداد کی متقاضی ہو سکتی ہیں۔
-براہِ کرم فوری طور پر ریسکیو 1122 پر کال کریں یا قریبی ہسپتال کے **ایمرجنسی ڈیپارٹمنٹ** تشریف لے جائیں۔
-اس صورتحال میں AI اسسٹنٹ کے مشورے کا انتظار نہ کریں۔`;
+براہِ کرم فوری طور پر سٹی کیئر ہسپتال کے ایمرجنسی وارڈ تشریف لائیں یا ریسکیو 1122 پر کال کریں۔
+ہمارا ایمرجنسی ٹراما سینٹر 24/7 کھلا ہے۔`;
   }
 
   if (language === "roman_urdu") {
-    return `🚨 **EMERGENCY ALERT**
-Aap ki describe ki gayi symptoms serious emergency ho sakti hain.
-Please foran Rescue 1122 par call karein ya qareebi Hospital ke **Emergency Department** tashreef le jayein.
-Emergency situations mein chat assistant ke response ka intezar na karein.`;
+    return `🚨 **Emergency Alert**
+Aap ki batayi hui symptoms fori emergency medical care require karti hain.
+Barah-e-karam bila-takeer City Care Hospital ke Emergency Department tashreef layein ya foran Emergency Helpline (1122) par rabta karein.
+Hamara Emergency Trauma Center 24/7 on-duty hai.`;
   }
 
-  return `🚨 **EMERGENCY MEDICAL ALERT**
-The symptoms you have described may indicate a life-threatening medical emergency.
-Please **immediately call emergency services (e.g. 1122 or 911)** or visit the nearest **Hospital Emergency Department**.
-Do not rely on an AI assistant during a medical emergency.`;
+  return `🚨 **Medical Emergency Alert**
+The symptoms described indicate a potentially critical or life-threatening situation.
+Please proceed immediately to the **City Care Hospital Emergency & Trauma Center (Ground Floor)** or call emergency services (**1122** or local ambulance).
+Our acute trauma team and consultant cardiologists/surgeons are on-duty 24/7.`;
 }
 
 // ============================================================
@@ -89,6 +88,14 @@ const DOSAGE_PATTERNS = [
 
 function checkPrescriptionDosageDenial(message, language = "english") {
   const text = String(message || "").toLowerCase();
+
+  // Commercial pharmacy purchases must NEVER be blocked as medical dosage advice
+  if (
+    /\b(order|buy|purchase|want|need|send me|give me|chahiye|khareedna|khareedni|mangwani|mangwana|detail|details)\b/i.test(text)
+  ) {
+    return null;
+  }
+
   const isDosageQuery = DOSAGE_PATTERNS.some((pattern) => pattern.test(text));
 
   if (!isDosageQuery) return null;
@@ -115,13 +122,24 @@ Medication regimens must be personalized by a healthcare professional. Please fo
 // ============================================================
 
 const INTERACTION_PATTERNS = [
-  /\b(take .* with .*|together|combine .* and|interaction between|safe to take .* with|mix .* and)\b/i,
-  /\b(sath le sakte|ek sath|aik sath|le sakte hain)\b/i,
+  /\b(take .* with .*|taking .* with .*|together|combine .* and|interaction between|interact(?:ion)? with|safe to take .* with|mix .* and)\b/i,
+  /\b(taking|take|using|use|on)\s+.+\s+(and|with)\s+.+\b/i,
+  /\b(can i|can we|should i|is it safe|is .* safe|are .* safe).*\b(with|and|together)\b/i,
+  /\b(sath le sakte|ek sath|aik sath|le sakte hain|saath le sakta|saath lena|mil kar|ikathay)\b/i,
 ];
 
 function isInteractionQuery(message) {
   const text = String(message || "").toLowerCase();
-  return INTERACTION_PATTERNS.some((p) => p.test(text));
+  if (INTERACTION_PATTERNS.some((p) => p.test(text))) {
+    return true;
+  }
+  try {
+    const { identifyClasses } = require("./interactionChecker");
+    if (identifyClasses && identifyClasses(text).length >= 2) {
+      return true;
+    }
+  } catch {}
+  return false;
 }
 
 function handleMedicineInteraction(message, language = "english") {
@@ -151,18 +169,101 @@ function handleMedicineInteraction(message, language = "english") {
 }
 
 // ============================================================
+// HELPER: NATURAL DATE, EMAIL, AND PHONE PARSER
+// ============================================================
+
+function parseNaturalDate(str) {
+  if (!str) return null;
+  const s = String(str).trim();
+
+  // Check today / tomorrow / day after tomorrow
+  if (/\btoday\b/i.test(s) || /^today$/i.test(s)) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  if (/\btomorrow\b/i.test(s) || /^tomorrow$/i.test(s)) {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/day after tomorrow/i.test(s)) {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // ISO: YYYY-MM-DD
+  const isoMatch = s.match(/\b(202[5-9]-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\b/);
+  if (isoMatch) return isoMatch[1];
+
+  // Slash/Dash: DD/MM/YYYY or DD-MM-YYYY
+  const slashMatch = s.match(/\b([0-2]?\d|3[01])[/-](0?[1-9]|1[0-2])[/-](202[5-9])\b/);
+  if (slashMatch) {
+    const day = slashMatch[1].padStart(2, "0");
+    const month = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // English: 13 September 2026, 13th September 2026, Sep 13 2026, 13 September
+  const monthMap = {
+    jan: "01", january: "01",
+    feb: "02", february: "02",
+    mar: "03", march: "03",
+    apr: "04", april: "04",
+    may: "05",
+    jun: "06", june: "06",
+    jul: "07", july: "07",
+    aug: "08", august: "08",
+    sep: "09", sept: "09", september: "09",
+    oct: "10", october: "10",
+    nov: "11", november: "11",
+    dec: "12", december: "12",
+  };
+
+  const naturalMatch = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s*,?\s*(202[5-9]))?\b/i);
+  if (naturalMatch) {
+    const day = naturalMatch[1].padStart(2, "0");
+    const month = monthMap[naturalMatch[2].toLowerCase().slice(0, 3)] || "01";
+    const year = naturalMatch[3] || String(new Date().getFullYear());
+    return `${year}-${month}-${day}`;
+  }
+
+  const naturalMonthFirst = s.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*,?\s*(202[5-9]))?\b/i);
+  if (naturalMonthFirst) {
+    const month = monthMap[naturalMonthFirst[1].toLowerCase().slice(0, 3)] || "01";
+    const day = naturalMonthFirst[2].padStart(2, "0");
+    const year = naturalMonthFirst[3] || String(new Date().getFullYear());
+    return `${year}-${month}-${day}`;
+  }
+
+  return null;
+}
+
+function extractEmail(text) {
+  const match = String(text || "").match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
+  return match ? match[0] : null;
+}
+
+function extractPhone(text) {
+  const match = String(text || "").match(/(?:(?:\+?92|0092|0)?\s*[3]\d{2}[\s-]?\d{7}|\+?\d{10,14})/);
+  return match ? match[0].replace(/\s+/g, "") : null;
+}
+
+// ============================================================
 // 4. PHARMACY ACTIONS & ORDER FLOW
 // ============================================================
 
 const PHARMACY_ORDER_START_PATTERNS = [
-  /\b(order|buy|purchase)\b.*\b(panadol|paracetamol|amoxicillin|insulin|cough syrup|ibuprofen|aspirin|omeprazole|medicine|tablets?)\b/i,
-  /\b(order medicine|buy medicine|purchase medicine|home delivery)\b/i,
-  /\b(dawa mangwani|medicine mangwani|order karna)\b/i,
+  /\b(order|buy|purchase|want|need|send me|give me|can i have|want to buy|want to purchase|want to order|mangwani|chahiye|khareedna|khareedni|lena hai|layna hai)\b/i,
+  /\b(order medicine|buy medicine|purchase medicine|home delivery|cash on delivery|cod delivery)\b/i,
+  /\b(dawa mangwani|medicine mangwani|order karna|dawa chahiye|medicine chahiye)\b/i,
+  /\b(same detail|same details|earlier detail|previous detail)\b/i,
 ];
 
 const PHARMACY_SEARCH_PATTERNS = [
-  /\b(do you have|is .* in stock|stock of|availability of|price of|how much is|cost of|list medicines|show medicines|catalog|available medicines|medicines available|which medicines|what medicines|online pharmacy|pharmacy medicines)\b/i,
-  /\b(dawa available hai|dawai available hai|kon si dawa|kaun si dawa|kon si medicines|kaun si medicines|dawaiyan available|dawa available|stock hai|keemat kitni|price kya hai)\b/i,
+  /\b(do you have|is .* in stock|stock of|availability of|price of|how much is|cost of|list medicines|show medicines|catalog|available medicines|medicines available|which medicines|what medicines|online pharmacy|pharmacy medicines|medicines present|medicines are present|medicines in pharmacy)\b/i,
+  /\b(dawa available hai|dawai available hai|kon si dawa|kaun si dawa|kon si medicines|kaun si medicines|dawaiyan available|dawa available|stock hai|keemat kitni|price kya hai|dawaon ki list|dawaiyon ki list|medicines ki list)\b/i,
+  /\b(which medications|what medications|medications available|medications in stock|medications list)\b/i,
 ];
 
 const PHARMACY_TRACK_PATTERNS = [
@@ -196,8 +297,7 @@ async function handlePharmacyFlow(pool, session, message, language = "english") 
   if (isPharmacyTrack(text)) {
     const codeMatch = text.match(/ORD-[A-Z0-9-]+/i);
     const code = codeMatch ? codeMatch[0] : "";
-    const phoneMatch = text.match(/(\+?\d{10,13})/);
-    const phone = phoneMatch ? phoneMatch[0] : "";
+    const phone = extractPhone(text) || "";
 
     const order = await getPharmacyOrderStatus(pool, { orderCode: code, phone });
     if (!order) {
@@ -207,13 +307,13 @@ async function handlePharmacyFlow(pool, session, message, language = "english") 
     let reply = `📦 **Pharmacy Order Tracking: ${order.order_code}**\n\n`;
     reply += `• **Customer Name:** ${order.customer_name}\n`;
     reply += `• **Delivery Address:** ${order.delivery_address}\n`;
-    reply += `• **Status:** ${order.status.toUpperCase()}\n`;
+    reply += `• **Order Status:** **${order.status.toUpperCase()}**\n`;
     reply += `• **Payment:** Cash on Delivery (COD)\n`;
-    reply += `• **Total Amount:** $${Number(order.total_amount).toFixed(2)}\n`;
+    reply += `• **Total Amount:** Rs. ${Number(order.total_amount).toLocaleString()}\n`;
     if (order.items && order.items.length) {
       reply += `\n**Ordered Items:**\n`;
       order.items.forEach((item) => {
-        reply += `• ${item.quantity}x ${item.medicine_name} ($${Number(item.unit_price).toFixed(2)} each)\n`;
+        reply += `• ${item.quantity}x ${item.medicine_name} (Rs. ${Number(item.unit_price).toLocaleString()} each)\n`;
       });
     }
     return reply;
@@ -223,233 +323,285 @@ async function handlePharmacyFlow(pool, session, message, language = "english") 
   if (session.pharmacyOrder) {
     const order = session.pharmacyOrder;
 
-    // Check for confirmation first
-    if (order.awaitingConfirmation) {
-      if (/^(yes|confirm|ha|haan|ok|okay|proceed|placed?)$/i.test(text.trim())) {
-        try {
-          const placed = await createPharmacyOrder(pool, {
-            customer_name: order.customer_name,
-            customer_phone: order.customer_phone,
-            customer_email: order.customer_email || null,
-            delivery_address: order.delivery_address,
-            notes: order.notes || "Ordered via AI Assistant",
-            items: order.items,
-          });
+    // Extract any new email, phone, address, or name provided
+    const email = extractEmail(text);
+    if (email && !order.customer_email) order.customer_email = email;
 
-          session.pharmacyOrder = null;
+    const phone = extractPhone(text);
+    if (phone && !order.customer_phone) order.customer_phone = phone;
 
-          let reply = `✅ **Online Pharmacy Order Placed Successfully!**\n\n`;
-          reply += `• **Order Tracking Code:** \`${placed.order_code}\`\n`;
-          reply += `• **Recipient:** ${placed.customer_name} (${placed.customer_phone})\n`;
-          reply += `• **Delivery Address:** ${placed.delivery_address}\n`;
-          reply += `• **Payment Mode:** Cash on Delivery (COD)\n`;
-          reply += `• **Total Payable:** $${placed.total_amount.toFixed(2)}\n\n`;
-          reply += `**Items in Package:**\n`;
-          placed.items.forEach((it) => {
-            reply += `• ${it.quantity}x ${it.medicine_name} - $${Number(it.line_total).toFixed(2)}\n`;
-          });
-          reply += `\nOur hospital pharmacy courier will deliver to your doorstep. Please have the cash payment ready upon delivery.`;
-          return reply;
-        } catch (err) {
-          return `Failed to place order: ${err.message}. Would you like to adjust the order details?`;
-        }
-      } else if (/^(no|cancel|stop|nahin|nahi)$/i.test(text.trim())) {
+    // Extract delivery address if explicitly prefixed
+    const addressPrefixMatch = text.match(/(?:delivery\s*address|deliver\s*to|shipping\s*address)\s*(?:is|:)?\s*([^.]+?)(?:\s*(?:and\s+)?(?:email|phone|contact|name|patient)|\n|$)/i);
+    if (addressPrefixMatch && !order.delivery_address) {
+      order.delivery_address = addressPrefixMatch[1].trim();
+    }
+
+    // Split text to extract address and name if not set
+    const cleanForParts = text
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "")
+      .replace(/(?:(?:\+?92|0092|0)?\s*[3]\d{2}[\s-]?\d{7}|\+?\d{10,14})/g, "");
+    const parts = cleanForParts.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (
+        !order.delivery_address &&
+        !/\b(want|order|purchase|buy|need|same detail|earlier|previous|send me|give me)\b/i.test(part) &&
+        (/\b(street|road|house|sector|block|apt|flat|phase|colony|near|st\.|h#|r#|floor|gali|makan)\b/i.test(part) ||
+          (part.length > 20 && /\d/.test(part)))
+      ) {
+        order.delivery_address = part;
+      } else if (!order.customer_name && part.length >= 2 && part.length <= 40 && !/\d/.test(part) && !/yes|confirm|ok|order|buy/i.test(part)) {
+        order.customer_name = part;
+      }
+    }
+
+    // If confirmation word given and all details present
+    if (order.customer_name && order.customer_phone && order.delivery_address && order.customer_email) {
+      try {
+        const placed = await createPharmacyOrder(pool, {
+          customer_name: order.customer_name,
+          customer_phone: order.customer_phone,
+          customer_email: order.customer_email,
+          delivery_address: order.delivery_address,
+          notes: order.notes || "Ordered via AI Assistant",
+          items: order.items,
+        });
+
         session.pharmacyOrder = null;
-        return "Your pharmacy order request has been cancelled. Let me know if you need anything else.";
+
+        let reply = `✅ **Online Pharmacy Order Placed & Confirmed!**\n\n`;
+        reply += `• **Order Tracking Code:** ${placed.order_code}\n`;
+        reply += `• **Recipient:** ${placed.customer_name} (${placed.customer_phone})\n`;
+        reply += `• **Confirmation Email:** ${placed.customer_email || "Sent"}\n`;
+        reply += `• **Delivery Address:** ${placed.delivery_address}\n`;
+        reply += `• **Payment Mode:** Cash on Delivery (COD)\n`;
+        reply += `• **Total Payable:** Rs. ${placed.total_amount.toLocaleString()}\n\n`;
+        reply += `**Items in Package:**\n`;
+        placed.items.forEach((it) => {
+          reply += `• ${it.quantity}x ${it.medicine_name} — Rs. ${Number(it.line_total).toLocaleString()}\n`;
+        });
+        reply += `\nOur hospital pharmacy team has received your confirmed order and is preparing it for dispatch. A confirmation receipt has been sent to ${placed.customer_email}.`;
+        return reply;
+      } catch (err) {
+        return `Failed to place order: ${err.message}. Would you like to adjust your details?`;
       }
     }
 
-    // Parse comma or newline separated fields if provided together
-    const parts = text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 1) {
-      const addressParts = [];
-      for (const part of parts) {
-        const pMatch = part.match(/(\+?\d{10,13})/);
-        if (pMatch && !order.customer_phone) {
-          order.customer_phone = pMatch[0];
-        } else if (
-          !order.customer_name &&
-          part.length > 2 &&
-          part.length < 35 &&
-          !/\d/.test(part) &&
-          !/street|road|house|sector|block|phase|colony|area|near|flat|apt/i.test(part)
-        ) {
-          order.customer_name = part;
-        } else {
-          addressParts.push(part);
-        }
-      }
-      if (addressParts.length > 0 && !order.delivery_address) {
-        order.delivery_address = addressParts.join(", ");
-      }
-    } else {
-      // Single piece
-      const phoneMatch = text.match(/(\+?\d{10,13})/);
-      if (phoneMatch && !order.customer_phone) {
-        order.customer_phone = phoneMatch[0];
-      } else if (/street|road|house|sector|block|apt|flat|phase|colony|near|st\.|h#|r#/i.test(text) || text.length > 15) {
-        if (!order.delivery_address) order.delivery_address = text;
-      } else if (!order.customer_name && text.length < 50 && !phoneMatch) {
-        order.customer_name = text;
-      }
-    }
-
-    // Re-check missing fields
+    // Step-by-step missing prompts
     if (!order.customer_name) {
-      return "Thank you. Could you please share your **Full Name** for the order recipient?";
+      return "Thank you! Could you please provide the **Full Name** of the recipient for the pharmacy order?";
     }
     if (!order.customer_phone) {
       return `Thank you, ${order.customer_name}. What is your **contact phone number** for delivery coordination?`;
     }
-    if (!order.delivery_address) {
-      return `Please provide the **complete delivery address** where you would like the medications delivered.`;
+    if (!order.customer_email) {
+      return "Please share your **email address** so we can send the order receipt and tracking updates.";
     }
-
-    // All details present -> ask confirmation
-    order.awaitingConfirmation = true;
-    let sum = 0;
-    let breakdown = "";
-    order.items.forEach((it) => {
-      const lt = it.quantity * it.price;
-      sum += lt;
-      breakdown += `• ${it.quantity}x ${it.name} - $${lt.toFixed(2)} ($${it.price.toFixed(2)} each)\n`;
-    });
-
-    let conf = `📋 **Please Confirm Your Cash on Delivery (COD) Order:**\n\n`;
-    conf += `**Items:**\n${breakdown}`;
-    conf += `• **Total Price:** $${sum.toFixed(2)}\n`;
-    conf += `• **Payment:** Cash on Delivery (COD)\n`;
-    conf += `• **Recipient:** ${order.customer_name} (${order.customer_phone})\n`;
-    conf += `• **Delivery Address:** ${order.delivery_address}\n\n`;
-    conf += `Would you like me to place this order now? (Reply **Yes** to confirm, or **Cancel** to abort)`;
-    return conf;
+    if (!order.delivery_address) {
+      return "Please provide your complete **doorstep delivery address** for courier dispatch.";
+    }
   }
 
   // D. Start new pharmacy order
   if (isPharmacyOrderStart(text)) {
     // Search medicines in database
     const catalog = await searchPharmacyMedicines(pool);
+
+    // Look for medicine matches
     const matchedItems = [];
-
-    // Parse potential quantities and medicines
     for (const med of catalog) {
-      const cleanMed = med.name.toLowerCase();
-      const words = cleanMed.split(/\s+/);
-      const shortTitle = words.slice(0, 2).join(" ");
-      const singleWord = words[0];
+      const cleanMed = med.name.toLowerCase().replace(/\(.*\)/g, "").trim();
+      const rawMed = med.name.toLowerCase();
+      // Match if text contains the medicine name or its primary word
+      const primaryWord = cleanMed.split(" ")[0];
+      if (
+        text.toLowerCase().includes(rawMed) ||
+        text.toLowerCase().includes(cleanMed) ||
+        (primaryWord.length > 3 && new RegExp(`\\b${primaryWord}\\b`, "i").test(text))
+      ) {
+        if (!matchedItems.some((m) => m.medicine_id === med.id)) {
+          // Extract quantity if mentioned (e.g. 2 cetirizine, 3 strips)
+          const qMatch = text.match(new RegExp(`(\\d+)\\s*(?:x|strips?|tablets?|boxes?|packs?|units?)?\\s*${primaryWord}`, "i")) ||
+                         text.match(new RegExp(`${primaryWord}\\s*(\\d+)`, "i")) ||
+                         text.match(/\b(\d+)\s*(?:tablets?|strips?|packs?|boxes?)\b/i);
+          const qty = qMatch ? Math.max(1, parseInt(qMatch[1], 10)) : 1;
 
-      const patterns = [
-        new RegExp(`(\\d+)?\\s*(?:x|count|boxes?|packs?|strips?)?\\s*${cleanMed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"),
-        new RegExp(`(\\d+)?\\s*(?:x|count|boxes?|packs?|strips?)?\\s*${shortTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"),
-      ];
-      if (singleWord.length > 4) {
-        patterns.push(new RegExp(`(\\d+)?\\s*(?:x|count|boxes?|packs?|strips?)?\\s*${singleWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"));
-      }
-
-      for (const rx of patterns) {
-        const match = text.match(rx);
-        if (match && !matchedItems.some((i) => i.medicine_id === med.id)) {
-          const qty = match[1] ? parseInt(match[1], 10) : 1;
           matchedItems.push({
             medicine_id: med.id,
-            name: med.name,
+            medicine_name: med.name,
             quantity: qty,
-            price: med.price,
-            available_stock: med.stock_quantity,
+            unit_price: Number(med.unit_price),
+            line_total: qty * Number(med.unit_price),
+            stock_quantity: med.stock_quantity,
           });
-          break;
-        }
-      }
-    }
-
-    // If exact name didn't match, check keywords like "panadol", "cough syrup", "insulin", "paracetamol", etc.
-    if (matchedItems.length === 0) {
-      const terms = ["panadol", "paracetamol", "amoxicillin", "insulin", "cough syrup", "ibuprofen", "aspirin", "omeprazole", "cetirizine"];
-      for (const term of terms) {
-        if (new RegExp(`\\b${term}\\b`, "i").test(text)) {
-          const found = catalog.find((m) => m.name.toLowerCase().includes(term));
-          if (found) {
-            const qtyMatch = text.match(new RegExp(`(\\d+)\\s*(?:x\\s*)?${term}`, "i"));
-            const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
-            matchedItems.push({
-              medicine_id: found.id,
-              name: found.name,
-              quantity: qty,
-              price: found.price,
-              available_stock: found.stock_quantity,
-            });
-          }
         }
       }
     }
 
     if (matchedItems.length === 0) {
-      return "I would be happy to help you place a Cash on Delivery order from our hospital pharmacy. Which medications and quantities would you like to order? (For example: 'Order 2 Paracetamol 500mg and 1 Cough Syrup')";
+      // User says "I want to purchase..." but medicine not recognized in text
+      const cleanTerm = text
+        .replace(/[?.,!]/g, "")
+        .replace(/\b(i want to|want to|order|buy|purchase|mangwani|chahiye|khareedna|medicine|dawa|tablets?)\b/gi, "")
+        .trim();
+      if (cleanTerm && cleanTerm.length > 2) {
+        const directSearch = await searchPharmacyMedicines(pool, { query: cleanTerm });
+        if (directSearch.length > 0) {
+          const med = directSearch[0];
+          matchedItems.push({
+            medicine_id: med.id,
+            medicine_name: med.name,
+            quantity: 1,
+            unit_price: Number(med.unit_price),
+            line_total: Number(med.unit_price),
+            stock_quantity: med.stock_quantity,
+          });
+        }
+      }
     }
 
-    // Check stock for matched items
-    const outOfStock = matchedItems.filter((i) => i.available_stock < i.quantity);
+    if (matchedItems.length === 0) {
+      return "I can assist you in ordering any in-stock medicine from our 24/7 central pharmacy for Cash on Delivery (COD) doorstep delivery. Which medication would you like to purchase? (For example: *'Purchase Cetirizine 10mg'* or *'Order 2 Panadol 500mg'*)";
+    }
+
+    // Check stock
+    const outOfStock = matchedItems.filter((it) => it.stock_quantity <= 0);
     if (outOfStock.length > 0) {
-      const names = outOfStock.map((i) => `"${i.name}" (Requested: ${i.quantity}, Available: ${i.available_stock})`).join(", ");
-      return `Unfortunately, we currently do not have sufficient stock for: ${names}. Please adjust your quantity or consult our pharmacist for alternatives.`;
+      return `⚠️ We apologize, but **${outOfStock.map((it) => it.medicine_name).join(", ")}** is currently out of stock in our central inventory. Please check back soon or consult our pharmacist for available therapeutic alternatives.`;
     }
 
-    // Prescription check note
-    const prescriptionKeywords = ["amoxicillin", "ciprofloxacin", "metformin", "atorvastatin", "tramadol", "insulin", "lisinopril", "losartan", "azithromycin"];
-    const requiresRx = matchedItems.some((i) => prescriptionKeywords.some((pk) => i.name.toLowerCase().includes(pk)));
+    // Extract any details in the current message
+    const email = extractEmail(text);
+    const phone = extractPhone(text);
+    let address = null;
+    let name = null;
+
+    const addressPrefixMatch = text.match(/(?:delivery\s*address|deliver\s*to|shipping\s*address)\s*(?:is|:)?\s*([^.]+?)(?:\s*(?:and\s+)?(?:email|phone|contact|name|patient)|\n|$)/i);
+    if (addressPrefixMatch) {
+      address = addressPrefixMatch[1].trim();
+    }
+
+    const cleanForParts = text
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "")
+      .replace(/(?:(?:\+?92|0092|0)?\s*[3]\d{2}[\s-]?\d{7}|\+?\d{10,14})/g, "");
+    const parts = cleanForParts.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (
+        !address &&
+        !/\b(want|order|purchase|buy|need|same detail|earlier|previous|send me|give me)\b/i.test(part) &&
+        (/\b(street|road|house|sector|block|apt|flat|phase|colony|near|st\.|h#|r#|floor|gali|makan)\b/i.test(part) ||
+          (part.length > 20 && /\d/.test(part)))
+      ) {
+        address = part;
+      } else if (!name && part.length >= 2 && part.length <= 40 && !/\d/.test(part) && !/order|buy|purchase|cetirizine|panadol|amoxicillin|same|detail|want|need/i.test(part)) {
+        name = part;
+      }
+    }
+
+    // Inherit from session memory if not supplied in this turn (e.g. "same detail which I sent you earlier")
+    const profile = session.customerProfile || {};
+    const lab = session.labBooking || {};
+    const doc = session.booking || {};
+
+    const resolvedName = name || profile.name || lab.patient_name || doc.patient_name || null;
+    const resolvedPhone = phone || profile.phone || lab.patient_phone || doc.patient_phone || null;
+    const resolvedEmail = email || profile.email || lab.patient_email || doc.patient_email || null;
+    const resolvedAddress = address || profile.address || lab.home_address || null;
+
+    // Update session.customerProfile
+    session.customerProfile = {
+      name: resolvedName,
+      phone: resolvedPhone,
+      email: resolvedEmail,
+      address: resolvedAddress,
+    };
 
     session.pharmacyOrder = {
       items: matchedItems,
-      customer_name: null,
-      customer_phone: null,
-      delivery_address: null,
-      requiresPrescription: requiresRx,
+      customer_name: resolvedName,
+      customer_phone: resolvedPhone,
+      customer_email: resolvedEmail,
+      delivery_address: resolvedAddress,
+      notes: "Ordered via AI Assistant",
       awaitingConfirmation: false,
     };
 
-    let reply = `Great, I have noted your order for:\n`;
-    matchedItems.forEach((i) => {
-      reply += `• ${i.quantity}x ${i.name} ($${i.price.toFixed(2)} each)\n`;
-    });
-
-    if (requiresRx) {
-      reply += `\n📌 **Prescription Notice:** One or more of these medications requires a doctor's prescription. Our pharmacist will verify your prescription prior to dispatch.\n`;
+    // If all required customer details are already known, proceed directly to placement
+    if (resolvedName && resolvedPhone && resolvedEmail && resolvedAddress) {
+      return handlePharmacyFlow(pool, session, "confirm", language);
     }
 
-    reply += `\nTo proceed with Cash on Delivery, could you please provide your **Full Name**, **Contact Phone Number**, and **Delivery Address**?`;
+    let reply = `I found the following item in our central pharmacy inventory:\n\n`;
+    matchedItems.forEach((it) => {
+      reply += `• **${it.medicine_name}** — Rs. ${it.unit_price.toLocaleString()} each (Quantity: ${it.quantity})\n`;
+    });
+    reply += `• **Payment:** Cash on Delivery (COD)\n\n`;
+
+    // Prompt for only missing fields
+    if (!resolvedName) {
+      reply += "To proceed with home delivery, please provide the **Recipient's Full Name**.";
+    } else if (!resolvedPhone) {
+      reply += `Thank you, ${resolvedName}. What is your **contact phone number**?`;
+    } else if (!resolvedEmail) {
+      reply += "Please share your **email address** for electronic receipt delivery.";
+    } else if (!resolvedAddress) {
+      reply += "Please provide your **complete doorstep delivery address**.";
+    }
+
     return reply;
   }
 
-  // E. Pharmacy search / price inquiry
+  // E. Pharmacy search / catalog inquiries
   if (isPharmacySearch(text)) {
-    // Extract query word or category
-    const cleanTerm = text
-      .replace(/[?.,!]/g, "")
-      .replace(
-        /\b(do you have|is|in stock|stock of|availability of|price of|how much is|cost of|list medicines|show medicines|catalog|available hai|keemat|price kya hai|please|can you|tell me|what|which)\b/gi,
-        ""
-      )
-      .trim();
+    const isGeneralCatalog =
+      /\b(catalog|list medicines|show medicines|available medicines|medicines available|which medicines|what medicines|online pharmacy|pharmacy medicines|all medicines)\b/i.test(
+        text
+      ) ||
+      /^(which|what|list|show)?\s*(medicines?|medications?|drugs?|dawa|dawai)?\s*(are|is)?\s*(available|present|in stock)?\s*(in|at)?\s*(the)?\s*(pharmacy|store)?$/i.test(
+        text.trim()
+      );
+
+    let cleanTerm = "";
+    if (!isGeneralCatalog) {
+      cleanTerm = text
+        .replace(/[?.,!]/g, "")
+        .replace(
+          /\b(do you have|is|are|in stock|stock of|availability of|price of|how much is|cost of|what is the price of|keemat|price kya hai|please|can you|tell me|what|which|any|medicines?|medications?|drugs?|tablets?|syrups?|in pharmacy|available|present)\b/gi,
+          ""
+        )
+        .trim();
+    }
+
+    if (!cleanTerm || /^(medicines?|drugs?|medications?|dawa|dawai|pharmacy|store)$/i.test(cleanTerm)) {
+      cleanTerm = "";
+    }
 
     const results = await searchPharmacyMedicines(pool, { query: cleanTerm });
     if (results.length === 0) {
-      return `I couldn't find any medications matching "${cleanTerm}" in our pharmacy inventory. Please feel free to ask our pharmacy staff or check our Online Pharmacy shop.`;
+      return `I couldn't find any medications matching "${cleanTerm}" in our central pharmacy inventory. Please feel free to visit our Online Pharmacy page or ask our 24/7 ground-floor pharmacy counter.`;
     }
 
-    let reply = `💊 **Hospital Pharmacy Inventory (${results.length} item${results.length > 1 ? "s" : ""}):**\n\n`;
-    results.slice(0, 8).forEach((med) => {
+    let reply = "";
+    if (!cleanTerm) {
+      reply = `💊 **City Care Hospital Pharmacy Inventory:**\n`;
+      reply += `Our central pharmacy is open **24/7 on the Ground Floor (OPD)** for walk-in dispensing. Doorstep **Cash on Delivery (COD)** home delivery is also available!\n\n`;
+      reply += `**Available In-Stock Medications (${results.length} items):**\n\n`;
+    } else {
+      reply = `💊 **Pharmacy Search Results for "${cleanTerm}" (${results.length} found):**\n\n`;
+    }
+
+    results.slice(0, 10).forEach((med) => {
       let badge = "🟢 In Stock";
       if (med.stock_status === "out_of_stock") badge = "🔴 Out of Stock";
       else if (med.stock_status === "low_stock") badge = `🟡 Low Stock (${med.stock_quantity} left)`;
 
       reply += `• **${med.name}** (${med.category})\n`;
-      reply += `  Price: $${med.price.toFixed(2)} | Status: ${badge}\n`;
+      reply += `  Price: Rs. ${Number(med.unit_price).toLocaleString()} | Status: ${badge}\n`;
     });
 
-    if (results.length > 8) {
-      reply += `\n*Showing top 8 results. Visit our Online Pharmacy for the complete catalog.*`;
+    if (results.length > 10) {
+      reply += `\n*Showing top 10 items. Visit our Online Pharmacy for the complete catalog.*`;
     }
-    reply += `\nTo order any of these with Cash on Delivery, simply say e.g., *"Order 2 ${results[0].name}"*.`;
+    reply += `\nTo purchase any medicine for home delivery, simply say e.g., *"I want to purchase ${results[0].name}"*.`;
     return reply;
   }
 
@@ -461,7 +613,7 @@ async function handlePharmacyFlow(pool, session, message, language = "english") 
 // ============================================================
 
 const LAB_TRACK_PATTERNS = [
-  /\b(track lab|track test|lab results?|lab tracking)\b/i,
+  /\b(track lab|track test|lab results?|lab tracking|check my lab report|check lab report|check lab)\b/i,
   /\bLAB-\d{4}-\d{6}\b/i,
   /\bLB-[A-Z0-9-]+\b/i,
 ];
@@ -473,8 +625,11 @@ const LAB_BOOKING_START_PATTERNS = [
 ];
 
 const LAB_SEARCH_PATTERNS = [
-  /\b(what lab tests|list lab tests|lab test prices?|cost of .* test|how much is .* test|available lab tests|turnaround time)\b/i,
-  /\b(lab test kitne ka hai|test available hai|lab ke tests)\b/i,
+  /\b(what lab tests|which lab tests|what tests|which tests|list lab tests|list tests|show lab tests|show tests|available lab tests|available tests|all tests|lab catalog|test catalog|lab test prices?|cost of .* test|how much is .* test|turnaround time|lab tests?|laboratory tests?)\b/i,
+  /\b(lab test kitne ka hai|test available hai|lab ke tests|tests available|tests present|what tests do you have|which tests do you have|tests in lab)\b/i,
+  /\b(how much is (cbc|lipid|glucose|sugar|lft|rft|urine|blood count|thyroid|xray|ecg|ultrasound))\b/i,
+  /\b(cost of (cbc|lipid|glucose|sugar|lft|rft|urine|blood count|thyroid|xray|ecg|ultrasound))\b/i,
+  /\b(price of (cbc|lipid|glucose|sugar|lft|rft|urine|blood count|thyroid|xray|ecg|ultrasound))\b/i,
 ];
 
 function isLabTrack(message) {
@@ -500,32 +655,33 @@ async function handleLabFlow(pool, session, message, language = "english") {
 
   // B. Tracking lookup
   if (isLabTrack(text)) {
-    const codeMatch = text.match(/(LAB-\d{4}-\d{6}|LB-[A-Z0-9-]+)/i);
+    const codeMatch = text.match(/(LAB-d{4}-d{6}|LB-[A-Z0-9-]+)/i);
     const code = codeMatch ? codeMatch[0] : "";
 
     const labRecord = await trackLabBooking(pool, { trackingId: code });
     if (!labRecord) {
-      return `No laboratory record was found for tracking ID "${code || text}". Please verify the code on your laboratory receipt (e.g. LAB-YYYY-XXXXXX).`;
+      return `No laboratory record was found for tracking ID "${code || text}". Please verify the code on your token slip (e.g. LAB-YYYY-XXXXXX).`;
     }
 
-    let reply = `🧪 **Laboratory Booking & Test Results**\n\n`;
-    reply += `• **Tracking ID:** \`${labRecord.tracking_id}\`\n`;
+    let reply = `🧪 **Laboratory Booking & Diagnostic Report**\n\n`;
+    reply += `• **Tracking ID:** ${labRecord.tracking_id}\n`;
     reply += `• **Patient Name:** ${labRecord.patient_name}\n`;
-    reply += `• **Service Type:** ${labRecord.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Lab Service"}\n`;
+    reply += `• **Service Mode:** ${labRecord.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Laboratory"}\n`;
     reply += `• **Booking Date:** ${new Date(labRecord.booking_date).toISOString().slice(0, 10)}\n`;
-    reply += `• **Current Status:** **${labRecord.status.replace(/_/g, " ").toUpperCase()}**\n\n`;
+    reply += `• **Overall Status:** **${labRecord.status.replace(/_/g, " ").toUpperCase()}**\n\n`;
 
     if (labRecord.items && labRecord.items.length) {
-      reply += `**Test Results Breakdown:**\n`;
+      reply += `**Diagnostic Test Findings:**\n`;
       labRecord.items.forEach((item) => {
         reply += `• **${item.test_name}**\n`;
-        if (item.result_value) {
-          reply += `  - Value: **${item.result_value}** ${item.unit || ""}\n`;
-          reply += `  - Normal Range: ${item.normal_range || "N/A"}\n`;
-          reply += `  - Status: ${item.result_status ? item.result_status.toUpperCase() : "COMPLETED"}\n`;
-          if (item.remarks) reply += `  - Remarks: ${item.remarks}\n`;
+        if (item.result_status === "completed" || item.result_value) {
+          reply += `  - Measured Result: **${item.result_value || "Normal / Negative"}** ${item.unit || ""}\n`;
+          reply += `  - Reference Range: ${item.normal_range || "N/A"}\n`;
+          reply += `  - Verification Status: **VERIFIED & RELEASED**\n`;
+          if (item.remarks) reply += `  - Clinical Remarks: ${item.remarks}\n`;
         } else {
-          reply += `  - Status: *Sample Under Processing / Awaiting Findings*\n`;
+          reply += `  - Sample Status: *Sample Received in Laboratory*\n`;
+          reply += `  - Result Status: *Diagnostic Analysis in Progress — Awaiting Pathologist Verification*\n`;
         }
       });
     }
@@ -556,20 +712,21 @@ async function handleLabFlow(pool, session, message, language = "english") {
 
           session.labBooking = null;
 
-          let reply = `✅ **Laboratory Service Successfully Booked!**\n\n`;
-          reply += `• **Laboratory Tracking ID:** \`${created.tracking_id}\`\n`;
-          reply += `• **Booking Reference:** \`${created.booking_code}\`\n`;
+          let reply = `✅ **Laboratory Appointment Confirmed!**\n\n`;
+          reply += `• **Laboratory Tracking ID:** ${created.tracking_id}\n`;
+          reply += `• **Booking Reference:** ${created.booking_code}\n`;
           reply += `• **Patient:** ${created.patient_name} (${created.patient_phone})\n`;
-          reply += `• **Service Type:** ${created.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Lab"}\n`;
+          if (created.patient_email) reply += `• **Confirmation Email:** ${created.patient_email}\n`;
+          reply += `• **Service Mode:** ${created.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Laboratory"}\n`;
           reply += `• **Scheduled Date:** ${new Date(created.booking_date).toISOString().slice(0, 10)}\n`;
-          reply += `• **Total Amount:** $${created.total_amount.toFixed(2)}\n\n`;
+          reply += `• **Total Amount:** Rs. ${Number(created.total_amount).toLocaleString()}\n\n`;
           reply += `**Selected Tests:**\n`;
           created.tests.forEach((t) => {
-            reply += `• ${t.name} ($${t.price.toFixed(2)})\n`;
+            reply += `• ${t.name} (Rs. ${Number(t.price).toLocaleString()})\n`;
           });
-          reply += `\n**Important Instructions:**\n`;
-          reply += `• Please keep your Tracking ID \`${created.tracking_id}\` handy to view your results online.\n`;
-          reply += `• For blood and biochemistry tests, 8–12 hours of overnight fasting is recommended prior to sample collection.`;
+          reply += `\n**Instructions:**\n`;
+          reply += `• Please quote your Tracking ID ${created.tracking_id} at the laboratory desk or online tracking.\n`;
+          reply += `• For fasting tests (e.g. Lipid, Fasting Blood Sugar), 8–12 hours overnight fasting is advised.\n`;
           return reply;
         } catch (err) {
           return `Failed to register laboratory booking: ${err.message}. Would you like to adjust the booking details?`;
@@ -580,63 +737,42 @@ async function handleLabFlow(pool, session, message, language = "english") {
       }
     }
 
-    // Parse comma/newline separated parts
+    // Extract newly supplied information
+    const dateVal = parseNaturalDate(text);
+    if (dateVal && !booking.booking_date) booking.booking_date = dateVal;
+
+    const phoneVal = extractPhone(text);
+    if (phoneVal && !booking.patient_phone) booking.patient_phone = phoneVal;
+
+    const emailVal = extractEmail(text);
+    if (emailVal && !booking.patient_email) booking.patient_email = emailVal;
+
+    if (/\b(home|doorstep|ghr)\b/i.test(text)) {
+      booking.service_type = "home_service";
+    } else if (/\b(clinic|hospital|in-clinic|walk-in)\b/i.test(text)) {
+      booking.service_type = "in_clinic";
+    }
+
+    // Split text to extract address and name
     const parts = text.split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
-    if (parts.length > 1) {
-      for (const part of parts) {
-        const pMatch = part.match(/(\+?\d{10,13})/);
-        const dMatch = part.match(/\b(202[6-9]-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\b/);
-        if (pMatch && !booking.patient_phone) {
-          booking.patient_phone = pMatch[0];
-        } else if ((dMatch || /tomorrow|today/i.test(part)) && !booking.booking_date) {
-          if (dMatch) booking.booking_date = dMatch[0];
-          else {
-            const now = new Date();
-            if (/tomorrow/i.test(part)) now.setDate(now.getDate() + 1);
-            booking.booking_date = now.toISOString().slice(0, 10);
-          }
-        } else if (/home|clinic|in-clinic|walk-in/i.test(part)) {
-          booking.service_type = /home/i.test(part) ? "home_service" : "in_clinic";
-        } else if (/house|flat|apt|street|road|sector|block|colony|phase|near/i.test(part) || part.length > 15) {
-          if (!booking.home_address) booking.home_address = part;
-        } else if (!booking.patient_name && part.length > 2 && !/^\d+$/.test(part)) {
-          booking.patient_name = part;
-        }
-      }
-    } else {
-      // Single piece
-      const dateMatch = text.match(/\b(202[6-9]-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\b/);
-      if (dateMatch && !booking.booking_date) {
-        booking.booking_date = dateMatch[0];
-      } else if (!booking.booking_date && /tomorrow|today/i.test(text)) {
-        const now = new Date();
-        if (/tomorrow/i.test(text)) now.setDate(now.getDate() + 1);
-        booking.booking_date = now.toISOString().slice(0, 10);
-      }
+    for (const part of parts) {
+      if (parseNaturalDate(part) || extractPhone(part) || extractEmail(part)) continue;
 
-      const phoneMatch = text.match(/(\+?\d{10,13})/);
-      if (phoneMatch && !booking.patient_phone) {
-        booking.patient_phone = phoneMatch[0];
-      }
-
-      if (/home|ghr|home service|doorstep/i.test(text)) {
-        booking.service_type = "home_service";
-      } else if (/clinic|hospital|in-clinic|walk-in/i.test(text)) {
-        booking.service_type = "in_clinic";
-      }
-
-      if (booking.service_type === "home_service" && !booking.home_address) {
-        if (/street|road|house|sector|block|apt|flat|phase|colony|near|st\.|h#|r#/i.test(text) || text.length > 15) {
-          booking.home_address = text;
-        }
-      }
-
-      if (!booking.patient_name && !phoneMatch && !dateMatch && text.length < 50 && !/home|clinic|tomorrow|today/i.test(text)) {
-        booking.patient_name = text;
+      if (/\b(street|road|house|sector|block|apt|flat|phase|colony|near|st\.|h#|r#)\b/i.test(part) || part.length > 18) {
+        if (!booking.home_address) booking.home_address = part;
+      } else if (!booking.patient_name && part.length >= 2 && part.length <= 40 && !/\d/.test(part) && !/in clinic|home|yes|confirm|book|test/i.test(part)) {
+        booking.patient_name = part;
       }
     }
 
-    // Validate home collection capability for tests
+    // Sync to session.customerProfile
+    session.customerProfile = session.customerProfile || {};
+    if (booking.patient_name) session.customerProfile.name = booking.patient_name;
+    if (booking.patient_phone) session.customerProfile.phone = booking.patient_phone;
+    if (booking.patient_email) session.customerProfile.email = booking.patient_email;
+    if (booking.home_address) session.customerProfile.address = booking.home_address;
+
+    // Validate home collection capability
     if (booking.service_type === "home_service") {
       const unsupported = booking.tests.filter((t) => !t.is_home_collection_available);
       if (unsupported.length > 0) {
@@ -645,7 +781,7 @@ async function handleLabFlow(pool, session, message, language = "english") {
       }
     }
 
-    // Check missing fields step-by-step
+    // Inspect session state: Only prompt for genuinely missing information
     if (!booking.patient_name) {
       return "Please provide the **Patient's Full Name** for the laboratory booking.";
     }
@@ -653,26 +789,30 @@ async function handleLabFlow(pool, session, message, language = "english") {
       return `Thank you, ${booking.patient_name}. What is your **contact phone number**?`;
     }
     if (!booking.booking_date) {
-      return "What **date** would you like to schedule the laboratory test? (e.g. tomorrow or YYYY-MM-DD)";
+      return "What **date** would you like to schedule the laboratory test? (e.g. tomorrow or 13 September 2026)";
+    }
+    if (!booking.patient_email) {
+      return "Please provide your **email address** so we can send your digital lab report and tracking slip.";
     }
     if (booking.service_type === "home_service" && !booking.home_address) {
-      return "Please provide your **complete home address** for our mobile phlebotomist team to collect the sample.";
+      return "Please provide your **complete home address** for our phlebotomist team to collect the sample.";
     }
 
     // All collected -> prompt confirmation
     booking.awaitingConfirmation = true;
-    const total = booking.tests.reduce((sum, t) => sum + t.price, 0);
+    const total = booking.tests.reduce((sum, t) => sum + Number(t.price), 0);
 
     let conf = `📋 **Laboratory Appointment Summary:**\n\n`;
     conf += `• **Patient Name:** ${booking.patient_name}\n`;
     conf += `• **Phone:** ${booking.patient_phone}\n`;
-    conf += `• **Date:** ${booking.booking_date}\n`;
-    conf += `• **Service Type:** ${booking.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Laboratory"}\n`;
+    conf += `• **Email:** ${booking.patient_email}\n`;
+    conf += `• **Scheduled Date:** ${booking.booking_date}\n`;
+    conf += `• **Service Mode:** ${booking.service_type === "home_service" ? "Home Sample Collection" : "In-Clinic Laboratory"}\n`;
     if (booking.home_address) conf += `• **Collection Address:** ${booking.home_address}\n`;
-    conf += `• **Total Cost:** $${total.toFixed(2)}\n\n`;
-    conf += `**Tests to be performed:**\n`;
+    conf += `• **Total Amount:** Rs. ${total.toLocaleString()}\n\n`;
+    conf += `**Selected Tests:**\n`;
     booking.tests.forEach((t) => {
-      conf += `• ${t.name} ($${t.price.toFixed(2)})\n`;
+      conf += `• ${t.name} (Rs. ${Number(t.price).toLocaleString()})\n`;
     });
     conf += `\nWould you like me to confirm this laboratory booking? (Reply **Yes** to confirm or **Cancel** to abort)`;
     return conf;
@@ -685,7 +825,7 @@ async function handleLabFlow(pool, session, message, language = "english") {
 
     // Match tests mentioned in text
     for (const test of allTests) {
-      const cleanTestName = test.name.replace(/\(.*?\)/g, "").trim().toLowerCase();
+      const cleanTestName = test.name.replace(/\(.*\)/g, "").trim().toLowerCase();
       const rawTestName = test.name.toLowerCase();
       if (
         text.toLowerCase().includes(rawTestName) ||
@@ -698,20 +838,23 @@ async function handleLabFlow(pool, session, message, language = "english") {
       }
     }
 
-    // If no exact match, check common terms: cbc, blood, lipid, urine, liver, lft, thyroid, glucose
+    // Common abbreviations
     if (matched.length === 0) {
       const keywords = [
         { term: "cbc", name: "Complete Blood Count" },
         { term: "blood count", name: "Complete Blood Count" },
         { term: "lipid", name: "Lipid Profile" },
         { term: "cholesterol", name: "Lipid Profile" },
+        { term: "lft", name: "Liver Function Test" },
+        { term: "liver", name: "Liver Function Test" },
+        { term: "rft", name: "Renal Function Test" },
+        { term: "kidney", name: "Renal Function Test" },
         { term: "glucose", name: "Fasting Blood Glucose" },
         { term: "sugar", name: "Fasting Blood Glucose" },
-        { term: "liver", name: "Liver Function Test" },
-        { term: "lft", name: "Liver Function Test" },
-        { term: "thyroid", name: "Thyroid Profile" },
-        { term: "tsh", name: "Thyroid Profile" },
-        { term: "urine", name: "Urine Routine Examination" },
+        { term: "urine", name: "Complete Urine Analysis" },
+        { term: "x-ray", name: "Chest X-Ray" },
+        { term: "xray", name: "Chest X-Ray" },
+        { term: "ultrasound", name: "Abdominal Ultrasound" },
       ];
 
       for (const kw of keywords) {
@@ -725,60 +868,110 @@ async function handleLabFlow(pool, session, message, language = "english") {
     }
 
     if (matched.length === 0) {
-      return "I can help you book an in-clinic laboratory test or schedule home sample collection. Which lab test or blood work would you like to book? (For example: 'Book Complete Blood Count' or 'Schedule Lipid Profile test')";
+      return "I can help you book an in-clinic laboratory test or schedule home sample collection. Which lab test or blood work would you like to book? (For example: *'Book Complete Blood Count'* or *'Schedule Lipid Profile'*).";
     }
 
-    const isHome = /home|ghr|doorstep/i.test(text);
-    if (isHome) {
-      const unsupported = matched.filter((t) => !t.is_home_collection_available);
-      if (unsupported.length > 0) {
-        return `⚠️ Home collection is not available for: ${unsupported.map((t) => t.name).join(", ")}. These tests require clinic facilities. Would you like to book them as **In-Clinic** tests instead?`;
-      }
-    }
+    const isHome = /home|doorstep|ghr/i.test(text);
+
+    // Extract any details already present in the booking sentence
+    const dateVal = parseNaturalDate(text);
+    const phoneVal = extractPhone(text);
+    const emailVal = extractEmail(text);
+
+    const profile = session.customerProfile || {};
+    const doc = session.booking || {};
+
+    const resolvedName = profile.name || doc.patient_name || null;
+    const resolvedPhone = phoneVal || profile.phone || doc.patient_phone || null;
+    const resolvedEmail = emailVal || profile.email || doc.patient_email || null;
+    const resolvedAddress = profile.address || null;
 
     session.labBooking = {
       tests: matched,
       service_type: isHome ? "home_service" : "in_clinic",
-      patient_name: null,
-      patient_phone: null,
-      booking_date: null,
-      home_address: null,
+      patient_name: resolvedName,
+      patient_phone: resolvedPhone,
+      patient_email: resolvedEmail,
+      booking_date: dateVal,
+      home_address: resolvedAddress,
       awaitingConfirmation: false,
     };
 
-    let reply = `I have selected the following test(s) for your booking:\n`;
+    let reply = `I have selected the following test(s) from our laboratory catalog:\n\n`;
     matched.forEach((t) => {
-      reply += `• **${t.name}** ($${t.price.toFixed(2)}) - ${t.is_home_collection_available ? "🏠 Home Collection Available" : "🏥 In-Clinic Only"}\n`;
+      reply += `• **${t.name}** (Rs. ${Number(t.price).toLocaleString()}) — ${t.is_home_collection_available ? "🏠 Home Collection Available" : "🏥 In-Clinic Only"}\n`;
     });
-    reply += `\nWould you like **In-Clinic** or **Home Sample Collection**? Please also provide the **Patient Name** and preferred **Appointment Date**.`;
+
+    const missingPrompts = [];
+    if (!isHome && !/clinic/i.test(text)) {
+      missingPrompts.push("Would you prefer **In-Clinic** or **Home Sample Collection**?");
+    }
+    if (!resolvedName) {
+      missingPrompts.push("Please provide the **Patient Full Name**.");
+    }
+    if (!dateVal) {
+      missingPrompts.push("What **date** would you like to schedule? (e.g. tomorrow or 13 September 2026)");
+    }
+    if (!resolvedPhone) {
+      missingPrompts.push("What is your **contact phone number**?");
+    }
+
+    if (missingPrompts.length > 0) {
+      reply += `\n${missingPrompts.join(" ")}`;
+    } else {
+      // All present -> trigger confirmation prompt
+      return handleLabFlow(pool, session, message, language);
+    }
     return reply;
   }
 
   // E. Lab search / inquiries
   if (isLabSearch(text)) {
-    const cleanTerm = text
-      .replace(/[?.,!]/g, "")
-      .replace(
-        /\b(what lab tests|list lab tests|lab test prices?|cost of|how much is|tests?|available lab tests|turnaround time|kitne ka hai|do you offer|can you do|do you have|show)\b/gi,
-        ""
-      )
-      .trim();
+    const isGeneralLabCatalog =
+      /\b(what lab tests|which lab tests|what tests|which tests|list lab tests|list tests|show lab tests|show tests|available lab tests|available tests|all tests|lab catalog|what tests do you have|which tests do you have|do you have lab tests|tests available|test catalog|lab ke tests|tests present)\b/i.test(
+        text
+      ) ||
+      /^(which|what|list|show|all)?\s*(tests?|lab tests?|laboratory tests?|blood tests?)\s*(are|is)?\s*(present|available|offered|done)?\s*(in|at)?\s*(the)?\s*(lab|laboratory|hospital)?$/i.test(
+        text.trim()
+      );
+
+    let cleanTerm = "";
+    if (!isGeneralLabCatalog) {
+      cleanTerm = text
+        .replace(/[?.,!]/g, "")
+        .replace(
+          /\b(what lab tests|which lab tests|what tests|which tests|list lab tests|list tests|show lab tests|show tests|lab test prices?|cost of|price of|how much is|tests?|test|available lab tests|available tests|turnaround time|kitne ka hai|price kya hai|do you offer|can you do|do you have|show|what is the price of|tell me the price of)\b/gi,
+          ""
+        )
+        .trim();
+    }
+
+    if (!cleanTerm || /^(tests?|lab tests?|laboratory tests?|lab|laboratory|all)$/i.test(cleanTerm)) {
+      cleanTerm = "";
+    }
 
     const results = await searchLabTests(pool, { query: cleanTerm });
     if (results.length === 0) {
-      return `I couldn't find any laboratory tests matching "${cleanTerm}". You can ask for tests like CBC, Lipid Profile, Blood Glucose, LFT, or Urine Examination.`;
+      return `I couldn't find any laboratory tests matching "${cleanTerm}". We offer tests including Complete Blood Count (CBC), Lipid Profile, Fasting Blood Glucose, LFT, Renal Function, Digital Chest X-Ray, and Ultrasound.`;
     }
 
-    let reply = `🧪 **Available Laboratory Tests (${results.length} found):**\n\n`;
+    let reply = "";
+    if (!cleanTerm) {
+      reply = `🧪 **City Care Diagnostic Laboratory Catalog (${results.length} tests available):**\n`;
+      reply += `Our pathology laboratory provides clinical pathology, biochemistry, and diagnostic imaging with doorstep sample collection.\n\n`;
+    } else {
+      reply = `🧪 **Laboratory Tests for "${cleanTerm}" (${results.length} found):**\n\n`;
+    }
+
     results.slice(0, 8).forEach((t) => {
       const homeBadge = t.is_home_collection_available ? "🏠 Home Collection Available" : "🏥 In-Clinic Only";
       reply += `• **${t.name}** (${t.category})\n`;
-      reply += `  Code: \`${t.test_code}\` | Price: $${t.price.toFixed(2)} | Turnaround: ${t.turnaround_hours}h | ${homeBadge}\n`;
+      reply += `  Code: ${t.test_code} | Price: Rs. ${Number(t.price).toLocaleString()} | Turnaround: ${t.turnaround_hours}h | ${homeBadge}\n`;
       if (t.normal_range) reply += `  Normal Range: ${t.normal_range} ${t.unit || ""}\n`;
     });
 
     if (results.length > 8) {
-      reply += `\n*Showing top 8 tests. Please visit our Laboratory page for all 26+ available clinical tests.*`;
+      reply += `\n*Showing top 8 tests. Please visit our Laboratory page for the complete list.*`;
     }
     reply += `\nTo book any test, simply reply e.g., *"Book ${results[0].name}"* or *"Schedule home collection for ${results[0].name}"*.`;
     return reply;
@@ -794,4 +987,8 @@ module.exports = {
   handleMedicineInteraction,
   handlePharmacyFlow,
   handleLabFlow,
+  parseNaturalDate,
+  isPharmacyOrderStart,
+  isPharmacySearch,
+  isPharmacyTrack,
 };

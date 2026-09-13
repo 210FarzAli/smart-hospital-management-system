@@ -33,7 +33,16 @@ router.post("/login", async (req, res) => {
   }
 
   // Portal roles
-  const allowedRoles = ["admin", "doctor", "pharmacist", "laboratory", "laboratorist"];
+  const allowedRoles = [
+    "admin",
+    "doctor",
+    "pharmacist",
+    "laboratory",
+    "laboratorist",
+    "hr",
+    "receptionist",
+    "reception",
+  ];
 
   if (!allowedRoles.includes(role)) {
     return res.status(400).json({
@@ -89,7 +98,15 @@ router.post("/login", async (req, res) => {
     // Check that the account belongs to the requested portal
     // ----------------------------------------------------------
 
-    if (staffUser.role !== role && !(staffUser.role === "admin" && ["pharmacist", "laboratorist"].includes(role))) {
+    const isRoleMatch =
+      staffUser.role === role ||
+      staffUser.role === "admin" ||
+      (["laboratory", "laboratorist"].includes(staffUser.role) &&
+        ["laboratory", "laboratorist"].includes(role)) ||
+      (["reception", "receptionist"].includes(staffUser.role) &&
+        ["reception", "receptionist"].includes(role));
+
+    if (!isRoleMatch) {
       return res.status(403).json({
         error: `This account does not have ${role} access.`,
       });
@@ -132,9 +149,16 @@ router.post("/login", async (req, res) => {
     // Create JWT
     // ----------------------------------------------------------
 
+    const effectiveRole =
+      ["laboratory", "laboratorist"].includes(staffUser.role)
+        ? "laboratorist"
+        : ["reception", "receptionist"].includes(staffUser.role)
+        ? "receptionist"
+        : staffUser.role;
+
     const payload = {
       staffUserId: staffUser.id,
-      role: staffUser.role,
+      role: effectiveRole,
       fullName: staffUser.full_name,
       email: staffUser.email,
       doctorId,

@@ -12,6 +12,9 @@ const pharmacyRoutes = require("./routes/pharmacy");
 const assistantRoutes = require("./routes/assistant");
 const reportRoutes = require("./routes/reports");
 const laboratoryRoutes = require("./routes/laboratory");
+const hrRoutes = require("./routes/hr");
+const receptionRoutes = require("./routes/reception");
+const adminRoutes = require("./routes/admin");
 const { ensureMigrations } = require("./db/migrations");
 
 const app = express();
@@ -31,6 +34,9 @@ app.use("/api/pharmacy", pharmacyRoutes);
 app.use("/api/assistant", assistantRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/laboratory", laboratoryRoutes);
+app.use("/api/hr", hrRoutes);
+app.use("/api/reception", receptionRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Fallback error handler.
 app.use((err, req, res, next) => {

@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, Navigate } from "react-router-dom";
 import ScrollToTop from "./components/ScrollToTop";
 
 import PublicLayout from "./pages/public/PublicLayout";
@@ -17,6 +17,7 @@ import AdminLogin from "./pages/admin/AdminLogin";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDoctors from "./pages/admin/AdminDoctors";
+import AdminHR from "./pages/admin/AdminHR";
 import AdminAppointments from "./pages/admin/AdminAppointments";
 import AdminLaboratory from "./pages/admin/AdminLaboratory";
 import AdminPharmacy from "./pages/admin/AdminPharmacy";
@@ -43,6 +44,19 @@ import LaboratoryLayout from "./pages/lab/LaboratoryLayout";
 import LaboratoryDashboard from "./pages/lab/LaboratoryDashboard";
 import LaboratoryAppointments from "./pages/lab/LaboratoryAppointments";
 import LaboratoryResults from "./pages/lab/LaboratoryResults";
+
+import HRLogin from "./pages/hr/HRLogin";
+import HRLayout from "./pages/hr/HRLayout";
+import HRDashboard from "./pages/hr/HRDashboard";
+import HREmployees from "./pages/hr/HREmployees";
+import HRDoctors from "./pages/hr/HRDoctors";
+import HRPayroll from "./pages/hr/HRPayroll";
+import HRAttendanceLeaves from "./pages/hr/HRAttendanceLeaves";
+
+import ReceptionLogin from "./pages/reception/ReceptionLogin";
+import ReceptionLayout from "./pages/reception/ReceptionLayout";
+import ReceptionDashboard from "./pages/reception/ReceptionDashboard";
+import ReceptionLaboratory from "./pages/reception/ReceptionLaboratory";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -81,6 +95,7 @@ export default function App() {
           }
         >
           <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="hr" element={<AdminHR />} />
           <Route path="doctors" element={<AdminDoctors />} />
           <Route path="appointments" element={<AdminAppointments />} />
           <Route path="laboratory" element={<AdminLaboratory />} />
@@ -142,6 +157,47 @@ export default function App() {
           <Route path="dashboard" element={<LaboratoryDashboard />} />
           <Route path="bookings" element={<LaboratoryAppointments />} />
           <Route path="results" element={<LaboratoryResults />} />
+        </Route>
+
+        {/* =========================
+            HUMAN RESOURCES (HR)
+        ========================== */}
+        <Route path="/hr/login" element={<HRLogin />} />
+        <Route
+          path="/hr"
+          element={
+            <ProtectedRoute role="hr" loginPath="/hr/login">
+              <HRLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<HRDashboard />} />
+          <Route path="dashboard" element={<HRDashboard />} />
+          <Route path="employees" element={<HREmployees />} />
+          <Route path="doctors" element={<HRDoctors />} />
+          <Route path="attendance" element={<HRAttendanceLeaves />} />
+          <Route path="payroll" element={<HRPayroll />} />
+        </Route>
+
+        {/* =========================
+            RECEPTION / FRONT DESK
+        ========================== */}
+        <Route path="/reception/login" element={<ReceptionLogin />} />
+        <Route
+          path="/reception"
+          element={
+            <ProtectedRoute role="receptionist" loginPath="/reception/login">
+              <ReceptionLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<ReceptionDashboard />} />
+          <Route path="dashboard" element={<ReceptionDashboard />} />
+          <Route path="patients" element={<Navigate to="/reception/dashboard" replace />} />
+          <Route path="laboratory" element={<ReceptionLaboratory />} />
+          <Route path="checkin" element={<Navigate to="/reception/dashboard" replace />} />
+          <Route path="walkin" element={<Navigate to="/reception/dashboard" replace />} />
+          <Route path="search" element={<Navigate to="/reception/dashboard" replace />} />
         </Route>
       </Routes>
     </>

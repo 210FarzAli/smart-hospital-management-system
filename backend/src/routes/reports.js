@@ -94,204 +94,157 @@ router.get(
       }
 
       // --------------------------------------------------------
-      // Build pharmacy date filter
+      // Build date filters for all entities
       // --------------------------------------------------------
-      let pharmacyDateCondition = "";
+      let apptDateCondition = "";
+      let createdAtCondition = "";
+      let labDateCondition = "";
 
       if (period === "day") {
-        pharmacyDateCondition = `
-          AND CAST(created_at AS DATE) =
-            CAST(@reportDate AS DATE)
+        apptDateCondition = "AND a.appointment_date = CAST(@reportDate AS DATE)";
+        createdAtCondition = "AND CAST(created_at AS DATE) = CAST(@reportDate AS DATE)";
+        labDateCondition = `
+          AND (
+            CAST(booking_date AS DATE) = CAST(@reportDate AS DATE)
+            OR CAST(created_at AS DATE) = CAST(@reportDate AS DATE)
+          )
+        `;
+      } else if (period === "week") {
+        apptDateCondition = `
+          AND a.appointment_date >= DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))
+          AND a.appointment_date < DATEADD(DAY, 7, DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE)))
+        `;
+        createdAtCondition = `
+          AND created_at >= DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))
+          AND created_at < DATEADD(DAY, 7, DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE)))
+        `;
+        labDateCondition = `
+          AND (
+            (booking_date >= DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))
+             AND booking_date < DATEADD(DAY, 7, DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))))
+            OR
+            (created_at >= DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))
+             AND created_at < DATEADD(DAY, 7, DATEADD(DAY, -((DATEDIFF(DAY, '19000101', CAST(@reportDate AS DATE)) % 7)), CAST(@reportDate AS DATE))))
+          )
+        `;
+      } else if (period === "month") {
+        apptDateCondition = `
+          AND a.appointment_date >= DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)
+          AND a.appointment_date < DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1))
+        `;
+        createdAtCondition = `
+          AND created_at >= DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)
+          AND created_at < DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1))
+        `;
+        labDateCondition = `
+          AND (
+            (booking_date >= DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)
+             AND booking_date < DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)))
+            OR
+            (created_at >= DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)
+             AND created_at < DATEADD(MONTH, 1, DATEFROMPARTS(YEAR(@reportDate), MONTH(@reportDate), 1)))
+          )
         `;
       }
 
-      if (period === "week") {
-        pharmacyDateCondition = `
-          AND created_at >=
-            DATEADD(
-              DAY,
-              -(
-                (
-                  DATEDIFF(
-                    DAY,
-                    '19000101',
-                    CAST(@reportDate AS DATE)
-                  ) % 7
-                )
-              ),
-              CAST(@reportDate AS DATE)
-            )
-          AND created_at <
-            DATEADD(
-              DAY,
-              7,
-              DATEADD(
-                DAY,
-                -(
-                  (
-                    DATEDIFF(
-                      DAY,
-                      '19000101',
-                      CAST(@reportDate AS DATE)
-                    ) % 7
-                  )
-                ),
-                CAST(@reportDate AS DATE)
-              )
-            )
-        `;
-      }
-
-      if (period === "month") {
-        pharmacyDateCondition = `
-          AND created_at >=
-            DATEFROMPARTS(
-              YEAR(@reportDate),
-              MONTH(@reportDate),
-              1
-            )
-          AND created_at <
-            DATEADD(
-              MONTH,
-              1,
-              DATEFROMPARTS(
-                YEAR(@reportDate),
-                MONTH(@reportDate),
-                1
-              )
-            )
-        `;
-      }
+      // Shared request with parameter binding
+      const filterRequest = () => {
+        const req = pool.request();
+        if (period !== "all") {
+          req.input("reportDate", sql.Date, selectedDate || new Date().toISOString().slice(0, 10));
+        }
+        return req;
+      };
 
       // --------------------------------------------------------
-      // Build pharmacy request
-      // --------------------------------------------------------
-      const pharmacyRequest = pool.request();
-
-      if (period !== "all") {
-        pharmacyRequest.input(
-          "reportDate",
-          selectedDate
-            ? selectedDate
-            : new Date()
-        );
-      }
-
-      // --------------------------------------------------------
-      // Load all report data
+      // Load all report data with active date filtering
       // --------------------------------------------------------
       const [
         doctors,
         patients,
-        appointmentsToday,
+        consultations,
         pendingAppointments,
         confirmedAppointments,
         totalAppointments,
-        pharmacySales,
+        physSales,
+        onlineSales,
         reviews,
         labMetrics,
       ] = await Promise.all([
-        // ------------------------------------------------------
-        // Doctors
-        // ------------------------------------------------------
-        pool.request().query(`
-          SELECT COUNT(*) AS count
-          FROM doctors
-        `),
+        // Doctors total
+        pool.request().query("SELECT COUNT(*) AS count FROM doctors"),
 
-        // ------------------------------------------------------
-        // Patients
-        // ------------------------------------------------------
-        pool.request().query(`
+        // Patient Inflow for the selected period
+        filterRequest().query(`
           SELECT COUNT(*) AS count
           FROM patients
+          WHERE 1 = 1 ${createdAtCondition}
         `),
 
-        // ------------------------------------------------------
-        // Today's appointments
-        // ------------------------------------------------------
-        pool.request().query(`
+        // Consultation Volume for the selected period (displayed on Consultation Volume KPI card)
+        filterRequest().query(`
           SELECT COUNT(*) AS count
-          FROM appointments
-          WHERE appointment_date =
-            CAST(GETDATE() AS DATE)
+          FROM appointments a
+          WHERE 1 = 1 ${apptDateCondition}
         `),
 
-        // ------------------------------------------------------
         // Pending appointments
-        // ------------------------------------------------------
-        pool.request().query(`
+        filterRequest().query(`
           SELECT COUNT(*) AS count
-          FROM appointments
-          WHERE status = 'pending'
+          FROM appointments a
+          WHERE a.status = 'pending' ${apptDateCondition}
         `),
 
-        // ------------------------------------------------------
         // Confirmed appointments
-        // ------------------------------------------------------
-        pool.request().query(`
+        filterRequest().query(`
           SELECT COUNT(*) AS count
-          FROM appointments
-          WHERE status = 'confirmed'
+          FROM appointments a
+          WHERE a.status = 'confirmed' ${apptDateCondition}
         `),
 
-        // ------------------------------------------------------
-        // Total appointments
-        // ------------------------------------------------------
-        pool.request().query(`
-          SELECT COUNT(*) AS count
-          FROM appointments
-        `),
+        // Total appointments overall
+        pool.request().query("SELECT COUNT(*) AS count FROM appointments"),
 
-        // ------------------------------------------------------
-        // Pharmacy report
-        // ------------------------------------------------------
-        pharmacyRequest.query(`
+        // Physical Pharmacy Sales
+        filterRequest().query(`
           SELECT
             COUNT(*) AS count,
-            ISNULL(
-              SUM(total_amount),
-              0
-            ) AS revenue
+            ISNULL(SUM(total_amount), 0) AS revenue
           FROM pharmacy_sales
-          WHERE 1 = 1
-          ${pharmacyDateCondition}
+          WHERE 1 = 1 ${createdAtCondition}
         `),
 
-        // ------------------------------------------------------
+        // Online Pharmacy Orders
+        filterRequest().query(`
+          SELECT
+            COUNT(*) AS count,
+            ISNULL(SUM(total_amount), 0) AS revenue
+          FROM pharmacy_online_orders
+          WHERE status != 'cancelled' ${createdAtCondition}
+        `),
+
         // Reviews
-        // ------------------------------------------------------
         pool.request().query(`
           SELECT
             COUNT(*) AS count,
-            ISNULL(
-              AVG(
-                CAST(rating AS FLOAT)
-              ),
-              0
-            ) AS avg_rating
+            ISNULL(AVG(CAST(rating AS FLOAT)), 0) AS avg_rating
           FROM reviews
         `),
 
-        // ------------------------------------------------------
-        // Laboratory metrics
-        // ------------------------------------------------------
-        pool.request().query(`
-          IF EXISTS (SELECT * FROM sys.tables WHERE name = 'lab_bookings')
-          BEGIN
-            SELECT
-              (SELECT COUNT(*) FROM lab_bookings WHERE status != 'cancelled') AS total_bookings,
-              (SELECT COUNT(*) FROM lab_booking_items WHERE result_status = 'completed') AS completed_tests,
-              (SELECT ISNULL(SUM(total_amount), 0) FROM lab_bookings WHERE status != 'cancelled') AS revenue
-          END
-          ELSE
-          BEGIN
-            SELECT 0 AS total_bookings, 0 AS completed_tests, 0 AS revenue
-          END
+        // Laboratory metrics for the selected period
+        filterRequest().query(`
+          SELECT
+            (SELECT COUNT(*) FROM lab_bookings WHERE status != 'cancelled' ${labDateCondition}) AS total_bookings,
+            (SELECT COUNT(*) FROM lab_booking_items WHERE result_status = 'completed' AND booking_id IN (SELECT id FROM lab_bookings WHERE status != 'cancelled' ${labDateCondition})) AS completed_tests,
+            (SELECT ISNULL(SUM(total_amount), 0) FROM lab_bookings WHERE status != 'cancelled' ${labDateCondition}) AS revenue
         `),
       ]);
 
       const labStats = labMetrics?.recordset?.[0] || { total_bookings: 0, completed_tests: 0, revenue: 0 };
+      const totalPharmacySalesCount =
+        Number(physSales.recordset[0].count) + Number(onlineSales.recordset[0].count);
+      const totalPharmacyRevenue =
+        Number(physSales.recordset[0].revenue) + Number(onlineSales.recordset[0].revenue);
 
       // --------------------------------------------------------
       // Determine report period label
@@ -299,51 +252,31 @@ router.get(
       let periodLabel = "All Time";
 
       if (period === "day") {
-        periodLabel = selectedDate
-          ? selectedDate
-          : "Today";
+        periodLabel = selectedDate ? selectedDate : "Today";
       }
 
       if (period === "week") {
-        periodLabel = selectedDate
-          ? `Week containing ${selectedDate}`
-          : "This Week";
+        periodLabel = selectedDate ? `Week containing ${selectedDate}` : "This Week";
       }
 
       if (period === "month") {
-        periodLabel = selectedDate
-          ? selectedDate.substring(0, 7)
-          : "This Month";
+        periodLabel = selectedDate ? selectedDate.substring(0, 7) : "This Month";
       }
 
       // --------------------------------------------------------
       // Response
       // --------------------------------------------------------
       res.json({
-        doctors:
-          doctors.recordset[0].count,
+        doctors: doctors.recordset[0].count,
+        patients: patients.recordset[0].count,
+        appointmentsToday: consultations.recordset[0].count,
+        pendingAppointments: pendingAppointments.recordset[0].count,
+        confirmedAppointments: confirmedAppointments.recordset[0].count,
+        totalAppointments: totalAppointments.recordset[0].count,
 
-        patients:
-          patients.recordset[0].count,
-
-        appointmentsToday:
-          appointmentsToday.recordset[0].count,
-
-        pendingAppointments:
-          pendingAppointments.recordset[0].count,
-
-        confirmedAppointments:
-          confirmedAppointments.recordset[0].count,
-
-        totalAppointments:
-          totalAppointments.recordset[0].count,
-
-        // Pharmacy report
-        pharmacySales:
-          pharmacySales.recordset[0].count,
-
-        pharmacyRevenue:
-          pharmacySales.recordset[0].revenue,
+        // Pharmacy report (Combined physical counter sales + confirmed online orders)
+        pharmacySales: totalPharmacySalesCount,
+        pharmacyRevenue: totalPharmacyRevenue,
 
         // Laboratory report
         labBookings: Number(labStats.total_bookings || 0),
@@ -352,26 +285,16 @@ router.get(
 
         // Selected report information
         reportPeriod: period,
-
         reportPeriodLabel: periodLabel,
-
-        reportDate:
-          selectedDate || null,
+        reportDate: selectedDate || null,
 
         // Reviews
-        totalReviews:
-          reviews.recordset[0].count,
-
-        averageRating:
-          reviews.recordset[0].avg_rating,
+        totalReviews: reviews.recordset[0].count,
+        averageRating: reviews.recordset[0].avg_rating,
       });
     } catch (err) {
-      console.error(err);
-
-      res.status(500).json({
-        error:
-          "Failed to load report data.",
-      });
+      console.error("Failed to load reports overview:", err);
+      res.status(500).json({ error: "Failed to load report data." });
     }
   }
 );

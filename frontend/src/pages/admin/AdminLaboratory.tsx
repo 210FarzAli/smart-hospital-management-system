@@ -35,20 +35,9 @@ export default function AdminLaboratory() {
     is_home_collection_available: true,
   });
 
-  // Selected Booking details & results entry modal
+  // Selected Booking details modal
   const [selectedBooking, setSelectedBooking] = useState<LabBooking | null>(null);
-  const [bookingModalLoading, setBookingModalLoading] = useState(false);
-  const [newStatus, setNewStatus] = useState<string>("");
-  const [resultsForm, setResultsForm] = useState<{
-    [itemId: string]: {
-      resultValue: string;
-      status: "completed" | "in_progress" | "pending" | "normal" | "abnormal";
-      remarks: string;
-      normalRange: string;
-      unit: string;
-    };
-  }>({});
-  const [savingResults, setSavingResults] = useState(false);
+  const [, setBookingModalLoading] = useState(false);
 
   // Patient History state
   const [historySearch, setHistorySearch] = useState("");
@@ -167,71 +156,16 @@ export default function AdminLaboratory() {
     }
   };
 
-  // Open booking details & results entry modal
+  // Open booking details modal (Read-Only)
   const handleOpenBooking = async (bookingId: string) => {
     setBookingModalLoading(true);
     try {
       const fullBooking = await laboratoryApi.getBooking(bookingId);
       setSelectedBooking(fullBooking);
-      setNewStatus(fullBooking.status);
-
-      const initialResults: { [itemId: string]: any } = {};
-      if (fullBooking.items) {
-        fullBooking.items.forEach((item: LabBookingItem) => {
-          initialResults[item.id] = {
-            resultValue: item.result_value || "",
-            status: item.result_status || "completed",
-            remarks: item.remarks || "",
-            normalRange: item.normal_range || "",
-            unit: item.unit || "",
-          };
-        });
-      }
-      setResultsForm(initialResults);
     } catch (err: any) {
       alert(err.message || "Failed to load booking details.");
     } finally {
       setBookingModalLoading(false);
-    }
-  };
-
-  // Update overall booking status
-  const handleUpdateStatus = async () => {
-    if (!selectedBooking) return;
-    try {
-      const updated = await laboratoryApi.updateStatus(selectedBooking.id, newStatus);
-      setSelectedBooking((prev) => (prev ? { ...prev, status: updated.status } : null));
-      loadData();
-      alert(`Booking status updated to: ${newStatus}`);
-    } catch (err: any) {
-      alert(err.message || "Failed to update status.");
-    }
-  };
-
-  // Save entered test results
-  const handleSaveResults = async () => {
-    if (!selectedBooking) return;
-    setSavingResults(true);
-    try {
-      const payload = Object.entries(resultsForm).map(([itemId, data]) => ({
-        itemId,
-        resultValue: data.resultValue,
-        status: data.status,
-        remarks: data.remarks,
-        normalRange: data.normalRange,
-        unit: data.unit,
-      }));
-
-      await laboratoryApi.recordResults(selectedBooking.id, payload);
-      const refreshed = await laboratoryApi.getBooking(selectedBooking.id);
-      setSelectedBooking(refreshed);
-      setNewStatus(refreshed.status);
-      loadData();
-      alert("Test findings and results recorded successfully!");
-    } catch (err: any) {
-      alert(err.message || "Failed to save results.");
-    } finally {
-      setSavingResults(false);
     }
   };
 
@@ -399,19 +333,18 @@ export default function AdminLaboratory() {
                   <th className="px-5 py-3.5">Schedule</th>
                   <th className="px-5 py-3.5">Bill Amount</th>
                   <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                    <td colSpan={6} className="p-8 text-center text-slate-400">
                       Loading bookings...
                     </td>
                   </tr>
                 ) : filteredBookings.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-500">
+                    <td colSpan={6} className="p-8 text-center text-slate-500">
                       No laboratory bookings found matching filter.
                     </td>
                   </tr>
@@ -477,19 +410,6 @@ export default function AdminLaboratory() {
                         >
                           {b.status.replace(/_/g, " ")}
                         </span>
-                      </td>
-
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenBooking(b.id);
-                          }}
-                          className="btn-secondary py-1.5 px-3 text-[11px] font-bold text-teal-900"
-                        >
-                          Manage / Results
-                        </button>
                       </td>
                     </tr>
                   ))
@@ -665,7 +585,7 @@ export default function AdminLaboratory() {
                         onClick={() => handleOpenBooking(record.id)}
                         className="btn-secondary py-1 px-3 text-xs font-bold"
                       >
-                        View / Edit Findings
+                        View Findings
                       </button>
                     </div>
 
@@ -749,33 +669,27 @@ export default function AdminLaboratory() {
             </div>
 
             <div className="mt-5 space-y-6 text-xs">
-              {/* Workflow Status Bar */}
+              {/* Workflow Status Bar (Read-Only for Admin) */}
               <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <label className="font-bold text-slate-700 block uppercase">Lifecycle Status</label>
-                  <span className="text-[11px] text-slate-500">Update current state across the diagnostic process.</span>
+                  <span className="text-[11px] text-slate-500">Managed by Laboratory Staff via pathology workflow.</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={newStatus}
-                    onChange={(e) => setNewStatus(e.target.value)}
-                    className="input-field py-1.5 text-xs font-semibold"
+                <div>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                      selectedBooking.status === "completed" || selectedBooking.status === "result_ready"
+                        ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300"
+                        : selectedBooking.status === "processing" || selectedBooking.status === "sample_collected"
+                        ? "bg-blue-100 text-blue-800 ring-1 ring-blue-300"
+                        : selectedBooking.status === "cancelled"
+                        ? "bg-rose-100 text-rose-800 ring-1 ring-rose-300"
+                        : "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
+                    }`}
                   >
-                    <option value="booked">Booked</option>
-                    <option value="sample_collection_pending">Sample Collection Pending</option>
-                    <option value="sample_collected">Sample Collected</option>
-                    <option value="processing">Processing / In Lab</option>
-                    <option value="result_ready">Result Ready</option>
-                    <option value="completed">Completed / Verified</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleUpdateStatus}
-                    className="btn-secondary py-1.5 px-3 text-xs font-bold"
-                  >
-                    Save Status
-                  </button>
+                    <span className="h-2 w-2 rounded-full bg-current" />
+                    {selectedBooking.status.replace(/_/g, " ")}
+                  </span>
                 </div>
               </div>
 
@@ -811,103 +725,68 @@ export default function AdminLaboratory() {
                 )}
               </div>
 
-              {/* Test Results Entry */}
+              {/* Test Results View (Read-Only Monitoring) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <h4 className="font-bold text-sm text-teal-950">Record / Update Test Findings</h4>
+                  <h4 className="font-bold text-sm text-teal-950">Clinical Findings & Results</h4>
                   <span className="text-[11px] text-slate-500">
-                    Enter clinical values, flags (Normal / Abnormal), and remarks.
+                    Laboratory results entered and verified by Pathologist staff.
                   </span>
                 </div>
 
                 {selectedBooking.items && selectedBooking.items.length > 0 ? (
-                  <div className="space-y-4">
-                    {selectedBooking.items.map((item) => {
-                      const formItem = resultsForm[item.id] || {
-                        resultValue: "",
-                        status: "completed",
-                        remarks: "",
-                        normalRange: item.normal_range || "",
-                        unit: item.unit || "",
-                      };
-
-                      return (
-                        <div key={item.id} className="rounded-2xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-bold text-sm text-teal-950">{item.test_name}</span>
-                              <div className="text-[11px] text-slate-500">
-                                Normal: {item.normal_range || "N/A"} {item.unit || ""}
-                              </div>
+                  <div className="space-y-3">
+                    {selectedBooking.items.map((item) => (
+                      <div key={item.id} className="rounded-2xl border border-slate-200 p-4 bg-slate-50/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-sm text-teal-950">{item.test_name}</span>
+                            <div className="text-[11px] text-slate-500">
+                              Normal Reference: {item.normal_range || "N/A"} {item.unit || ""}
                             </div>
-                            <span className="font-bold text-teal-900">Rs. {Number(item.price).toLocaleString()}</span>
                           </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                              <label className="font-bold text-[11px] text-slate-700 block">Measured Value</label>
-                              <input
-                                type="text"
-                                value={formItem.resultValue}
-                                onChange={(e) =>
-                                  setResultsForm({
-                                    ...resultsForm,
-                                    [item.id]: { ...formItem, resultValue: e.target.value },
-                                  })
-                                }
-                                placeholder="e.g. 13.5"
-                                className="input-field mt-1"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="font-bold text-[11px] text-slate-700 block">Clinical Assessment</label>
-                              <select
-                                value={formItem.status}
-                                onChange={(e) =>
-                                  setResultsForm({
-                                    ...resultsForm,
-                                    [item.id]: { ...formItem, status: e.target.value as any },
-                                  })
-                                }
-                                className="input-field mt-1"
+                          <div className="text-right">
+                            <span className="font-bold text-teal-900">Rs. {Number(item.price).toLocaleString()}</span>
+                            <div className="mt-0.5">
+                              <span
+                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                  item.result_status === "abnormal"
+                                    ? "bg-rose-100 text-rose-800 ring-1 ring-rose-200"
+                                    : item.result_status === "completed" || item.result_status === "normal"
+                                    ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200"
+                                    : "bg-amber-100 text-amber-800 ring-1 ring-amber-200"
+                                }`}
                               >
-                                <option value="completed">Completed (Normal / General)</option>
-                                <option value="normal">Normal Finding</option>
-                                <option value="abnormal">Abnormal / Critical Alert</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="pending">Pending</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="font-bold text-[11px] text-slate-700 block">Remarks / Notes</label>
-                              <input
-                                type="text"
-                                value={formItem.remarks}
-                                onChange={(e) =>
-                                  setResultsForm({
-                                    ...resultsForm,
-                                    [item.id]: { ...formItem, remarks: e.target.value },
-                                  })
-                                }
-                                placeholder="e.g. Verified by Dr. Asif"
-                                className="input-field mt-1"
-                              />
+                                {item.result_status || "Pending Entry"}
+                              </span>
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
 
-                    <div className="flex justify-end gap-2 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60 text-xs">
+                          <div>
+                            <span className="text-slate-500 block text-[11px] font-medium">Measured Value:</span>
+                            <span className="font-bold text-slate-900 text-sm">
+                              {item.result_value ? `${item.result_value} ${item.unit || ""}` : "Not recorded yet"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px] font-medium">Clinical Remarks:</span>
+                            <span className="text-slate-700 font-medium">
+                              {item.remarks || "No remarks noted"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex justify-end pt-2">
                       <button
                         type="button"
-                        onClick={handleSaveResults}
-                        disabled={savingResults}
-                        className="btn-primary py-2.5 px-6 text-xs font-bold shadow-md"
+                        onClick={() => setSelectedBooking(null)}
+                        className="btn-secondary py-2 px-5 text-xs font-bold"
                       >
-                        {savingResults ? "Saving Findings..." : "Save Findings & Complete"}
+                        Close Overview
                       </button>
                     </div>
                   </div>

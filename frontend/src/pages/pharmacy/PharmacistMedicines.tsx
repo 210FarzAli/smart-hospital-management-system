@@ -294,8 +294,8 @@ export default function PharmacistMedicines() {
       </div>
 
       {/* Search Toolbar */}
-      <div className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1">
+      <div className="card p-4">
+        <div className="relative">
           <Search className="pointer-events-none absolute top-3 left-3 h-4 w-4 text-slate-400" />
           <input
             type="text"
@@ -304,21 +304,6 @@ export default function PharmacistMedicines() {
             placeholder="Search medicine brand or generic category..."
             className="input-field pl-9 text-xs"
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-500">Status:</label>
-          <select
-            value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as "all" | "active" | "inactive")
-            }
-            className="input-field py-1.5 text-xs w-auto"
-          >
-            <option value="all">All Medicines ({medicines.length})</option>
-            <option value="active">Active Only ({activeCount})</option>
-            <option value="inactive">Deactivated Only ({inactiveCount})</option>
-          </select>
         </div>
       </div>
 

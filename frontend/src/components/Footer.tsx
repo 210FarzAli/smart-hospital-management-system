@@ -173,6 +173,20 @@ export default function Footer() {
                 <span>Laboratory Specialist</span>
                 <span className="text-[10px] text-teal-400 font-mono">/lab</span>
               </Link>
+              <Link
+                to="/hr/login"
+                className="flex items-center justify-between rounded-xl border border-teal-900/60 bg-teal-950/60 px-3.5 py-2.5 text-xs font-semibold text-teal-200 transition hover:bg-teal-900/50 hover:text-white"
+              >
+                <span>Human Resources (HR)</span>
+                <span className="text-[10px] text-teal-400 font-mono">/hr</span>
+              </Link>
+              <Link
+                to="/reception/login"
+                className="flex items-center justify-between rounded-xl border border-teal-900/60 bg-teal-950/60 px-3.5 py-2.5 text-xs font-semibold text-teal-200 transition hover:bg-teal-900/50 hover:text-white"
+              >
+                <span>Front Desk Reception</span>
+                <span className="text-[10px] text-teal-400 font-mono">/reception</span>
+              </Link>
             </div>
           </div>
         </div>

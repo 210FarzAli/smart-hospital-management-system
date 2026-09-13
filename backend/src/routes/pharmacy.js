@@ -1,7 +1,7 @@
 const express = require("express");
 const { sql, getPool } = require("../db");
 const { verifyToken, requireRole } = require("../middleware/auth");
-const { sendReceiptEmail } = require("../utils/notify");
+const { sendReceiptEmail, sendOnlinePharmacyOrderEmail } = require("../utils/notify");
 
 const router = express.Router();
 
@@ -11,6 +11,66 @@ function shortCode(prefix) {
     .slice(2, 10)
     .toUpperCase()}`;
 }
+
+async function deductBatchesFEFO(transaction, medicineId, quantity, medicineName = "Medicine") {
+  const batchesResult = await new sql.Request(transaction)
+    .input("medicine_id", sql.UniqueIdentifier, medicineId)
+    .query(`
+      SELECT id, quantity, expiry_date
+      FROM medicine_batches
+      WHERE medicine_id = @medicine_id AND quantity > 0
+      ORDER BY expiry_date ASC, id ASC
+    `);
+
+  const batches = batchesResult.recordset;
+  const totalAvailable = batches.reduce((acc, b) => acc + Number(b.quantity), 0);
+
+  if (totalAvailable < quantity) {
+    throw new Error(
+      `Insufficient stock for ${medicineName}. Available: ${totalAvailable}, Requested: ${quantity}`
+    );
+  }
+
+  let remaining = quantity;
+  for (const b of batches) {
+    if (remaining <= 0) break;
+    const toDeduct = Math.min(Number(b.quantity), remaining);
+
+    await new sql.Request(transaction)
+      .input("batch_id", sql.UniqueIdentifier, b.id)
+      .input("qty", sql.Int, toDeduct)
+      .query(`
+        UPDATE medicine_batches
+        SET quantity = quantity - @qty
+        WHERE id = @batch_id
+      `);
+
+    remaining -= toDeduct;
+  }
+}
+
+async function restockBatches(transaction, medicineId, quantity) {
+  const batchResult = await new sql.Request(transaction)
+    .input("medicine_id", sql.UniqueIdentifier, medicineId)
+    .query(`
+      SELECT TOP 1 id
+      FROM medicine_batches
+      WHERE medicine_id = @medicine_id
+      ORDER BY expiry_date DESC, id DESC
+    `);
+
+  if (batchResult.recordset[0]) {
+    await new sql.Request(transaction)
+      .input("batch_id", sql.UniqueIdentifier, batchResult.recordset[0].id)
+      .input("qty", sql.Int, quantity)
+      .query(`
+        UPDATE medicine_batches
+        SET quantity = quantity + @qty
+        WHERE id = @batch_id
+      `);
+  }
+}
+
 
 // ============================================================
 // GET /api/pharmacy/public-medicines
@@ -491,22 +551,16 @@ router.get(
             c.phone,
             c.email,
             c.created_at,
-
+            'WALK-IN / PHYSICAL' AS channel,
             COUNT(s.id) AS purchase_count,
-
             ISNULL(
               SUM(s.total_amount),
               0
             ) AS total_spent,
-
-            MAX(s.created_at)
-              AS last_purchase_at
-
+            MAX(s.created_at) AS last_purchase_at
           FROM pharmacy_customers c
-
           LEFT JOIN pharmacy_sales s
             ON s.customer_id = c.id
-
           GROUP BY
             c.id,
             c.customer_code,
@@ -515,8 +569,29 @@ router.get(
             c.email,
             c.created_at
 
+          UNION ALL
+
+          SELECT
+            o.id,
+            o.order_code AS customer_code,
+            o.customer_name AS full_name,
+            o.customer_phone AS phone,
+            o.customer_email AS email,
+            o.created_at,
+            'ONLINE' AS channel,
+            1 AS purchase_count,
+            o.total_amount AS total_spent,
+            o.created_at AS last_purchase_at
+          FROM pharmacy_online_orders o
+          WHERE o.status != 'cancelled'
+            AND NOT EXISTS (
+              SELECT 1 FROM pharmacy_customers pc
+              WHERE (pc.phone = o.customer_phone AND o.customer_phone IS NOT NULL AND o.customer_phone != '')
+                 OR (pc.email = o.customer_email AND o.customer_email IS NOT NULL AND o.customer_email != '')
+            )
+
           ORDER BY
-            c.full_name
+            full_name
         `);
 
       res.json(result.recordset);
@@ -868,6 +943,39 @@ router.post(
       // Find existing pharmacy customer or create a new one.
       // --------------------------------------------------------
 
+      let customerId = null;
+      if (customer && (customer.full_name || customer.phone || customer.email)) {
+        let existingCust = null;
+        if (customer.phone && String(customer.phone).trim()) {
+          const res = await new sql.Request(transaction)
+            .input("phone", sql.NVarChar, String(customer.phone).trim())
+            .query("SELECT TOP 1 id FROM pharmacy_customers WHERE phone = @phone");
+          existingCust = res.recordset[0];
+        }
+        if (!existingCust && customer.email && String(customer.email).trim()) {
+          const res2 = await new sql.Request(transaction)
+            .input("email", sql.NVarChar, String(customer.email).trim())
+            .query("SELECT TOP 1 id FROM pharmacy_customers WHERE email = @email");
+          existingCust = res2.recordset[0];
+        }
+
+        if (existingCust) {
+          customerId = existingCust.id;
+        } else {
+          const newCustRes = await new sql.Request(transaction)
+            .input("customer_code", sql.NVarChar, shortCode("C"))
+            .input("full_name", sql.NVarChar, String(customer.full_name || "Walk-in Customer").trim())
+            .input("phone", sql.NVarChar, customer.phone ? String(customer.phone).trim() : null)
+            .input("email", sql.NVarChar, customer.email ? String(customer.email).trim() : null)
+            .query(`
+              INSERT INTO pharmacy_customers (customer_code, full_name, phone, email)
+              OUTPUT INSERTED.id
+              VALUES (@customer_code, @full_name, @phone, @email)
+            `);
+          customerId = newCustRes.recordset[0].id;
+        }
+      }
+
       // --------------------------------------------------------
       // Calculate sale total.
       // --------------------------------------------------------
@@ -1040,38 +1148,8 @@ router.post(
         // Decrement the oldest available batch first.
         // ------------------------------------------------------
 
-        const stockUpdate =
-          await new sql.Request(
-            transaction
-          )
-            .input(
-              "medicine_id",
-              sql.UniqueIdentifier,
-              item.medicine_id
-            )
-            .input(
-              "quantity",
-              sql.Int,
-              item.quantity
-            )
-            .query(`
-              UPDATE TOP (1)
-                medicine_batches
-              SET
-                quantity =
-                  quantity - @quantity
-              WHERE
-                medicine_id = @medicine_id
-                AND quantity >= @quantity
-            `);
-
-        if (
-          stockUpdate.rowsAffected[0] === 0
-        ) {
-          throw new Error(
-            `Insufficient stock for ${medicine.name}.`
-          );
-        }
+        // Decrement using FEFO across available batches
+        await deductBatchesFEFO(transaction, item.medicine_id, item.quantity, medicine.name);
 
         savedItems.push({
           medicine_name:
@@ -1313,7 +1391,7 @@ router.post("/orders", async (req, res) => {
         OUTPUT INSERTED.*
         VALUES (
           @order_code, @customer_name, @customer_phone, @customer_email,
-          @delivery_address, @notes, @total_amount, 'pending'
+          @delivery_address, @notes, @total_amount, 'confirmed'
         )
       `);
 
@@ -1336,9 +1414,20 @@ router.post("/orders", async (req, res) => {
             @order_id, @medicine_id, @medicine_name, @quantity, @unit_price, @line_total
           )
         `);
+
+      // Deduct online order items from central inventory pool (FEFO)
+      await deductBatchesFEFO(transaction, item.medicine_id, item.quantity, item.medicine_name);
     }
 
     await transaction.commit();
+
+    // Send order confirmation email asynchronously
+    sendOnlinePharmacyOrderEmail({
+      order,
+      items: validatedItems,
+      customerEmail: customer_email,
+      customerName: customer_name,
+    }).catch((err) => console.error("Async online order email failed:", err.message));
 
     res.status(201).json({
       order: {
@@ -1471,10 +1560,43 @@ router.patch(
       return res.status(400).json({ error: "Invalid order status value." });
     }
 
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
     try {
-      const pool = await getPool();
-      const result = await pool
-        .request()
+      await transaction.begin();
+
+      // Check current status
+      const existingReq = new sql.Request(transaction);
+      const existingRes = await existingReq
+        .input("id", sql.UniqueIdentifier, req.params.id)
+        .query(`SELECT id, status FROM pharmacy_online_orders WHERE id = @id`);
+
+      const existingOrder = existingRes.recordset[0];
+      if (!existingOrder) {
+        await transaction.rollback();
+        return res.status(404).json({ error: "Order not found." });
+      }
+
+      if (existingOrder.status === "cancelled" && status !== "cancelled") {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Cannot reopen a cancelled order." });
+      }
+
+      // If transitioning to cancelled from non-cancelled, restock all items back to batches
+      if (existingOrder.status !== "cancelled" && status === "cancelled") {
+        const itemsReq = new sql.Request(transaction);
+        const itemsRes = await itemsReq
+          .input("order_id", sql.UniqueIdentifier, req.params.id)
+          .query(`SELECT medicine_id, quantity FROM pharmacy_online_order_items WHERE order_id = @order_id`);
+
+        for (const it of itemsRes.recordset) {
+          await restockBatches(transaction, it.medicine_id, Number(it.quantity));
+        }
+      }
+
+      const updateReq = new sql.Request(transaction);
+      const result = await updateReq
         .input("id", sql.UniqueIdentifier, req.params.id)
         .input("status", sql.NVarChar, status)
         .query(`
@@ -1484,12 +1606,12 @@ router.patch(
           WHERE id = @id
         `);
 
-      if (!result.recordset[0]) {
-        return res.status(404).json({ error: "Order not found." });
-      }
-
+      await transaction.commit();
       res.json(result.recordset[0]);
     } catch (err) {
+      try {
+        await transaction.rollback();
+      } catch (_) {}
       console.error("Failed to update order status:", err);
       res.status(500).json({ error: "Failed to update order status." });
     }

@@ -51,7 +51,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-slate-300">
+          <div className="flex items-center gap-3 text-slate-300 text-[11px] sm:text-xs">
             <span className="hidden sm:inline text-slate-400">Staff Portals:</span>
             <Link
               to="/admin/login"
@@ -79,6 +79,20 @@ export default function Navbar() {
               className="hover:text-white transition-colors underline-offset-4 hover:underline"
             >
               Laboratory
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link
+              to="/hr/login"
+              className="hover:text-white transition-colors underline-offset-4 hover:underline font-semibold text-teal-300"
+            >
+              HR
+            </Link>
+            <span className="text-slate-600">•</span>
+            <Link
+              to="/reception/login"
+              className="hover:text-white transition-colors underline-offset-4 hover:underline font-semibold text-teal-300"
+            >
+              Reception
             </Link>
           </div>
         </div>
@@ -219,6 +233,8 @@ export default function Navbar() {
                   <Link to="/doctor/login" onClick={() => setMobileMenuOpen(false)}>Doctor</Link>
                   <Link to="/pharmacy/login" onClick={() => setMobileMenuOpen(false)}>Pharmacy</Link>
                   <Link to="/lab/login" onClick={() => setMobileMenuOpen(false)}>Laboratory</Link>
+                  <Link to="/hr/login" onClick={() => setMobileMenuOpen(false)}>HR</Link>
+                  <Link to="/reception/login" onClick={() => setMobileMenuOpen(false)}>Reception</Link>
                 </div>
               </div>
             </nav>

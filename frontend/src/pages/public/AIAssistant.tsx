@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Stethoscope,
 } from "../../components/icons/Icons";
+import { MarkdownContent } from "../../components/MarkdownContent";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -276,9 +277,13 @@ export default function AIAssistant() {
                     : "rounded-tl-xs border border-slate-200/80 bg-white text-slate-800"
                 }`}
               >
-                <div className="whitespace-pre-wrap leading-relaxed">
-                  {m.content}
-                </div>
+                {m.role === "assistant" ? (
+                  <MarkdownContent content={m.content} />
+                ) : (
+                  <div className="whitespace-pre-wrap leading-relaxed">
+                    {m.content}
+                  </div>
+                )}
 
                 {m.timestamp && (
                   <div
